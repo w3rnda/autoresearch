@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Mail, MousePointer, Send, Calendar, Zap, ZapOff, DollarSign, FileText, User } from 'lucide-react'
+import { ArrowLeft, Mail, MousePointer, Send, Calendar, Zap, ZapOff, DollarSign, FileText, User, Briefcase } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { leadsApi } from '../../api/leads.api'
 import { formatCurrency, formatDateTime, formatDate, getInitials } from '../../utils/format'
@@ -11,6 +11,7 @@ import Badge from '../../components/ui/Badge'
 import Select from '../../components/ui/Select'
 import Spinner from '../../components/ui/Spinner'
 import ScoreBreakdown from '../../components/leads/ScoreBreakdown'
+import DealWorkspace from '../../components/workspace/DealWorkspace'
 
 const STATUS_OPTIONS = [
   { value: 'COLD', label: 'Cold' },
@@ -178,10 +179,11 @@ export default function LeadDetail() {
   const totalActivityCount = emailEvents.length + meetings.length + deals.length + quotes.length
 
   const TABS = [
-    { key: 'activity', label: 'Activity', count: totalActivityCount },
-    { key: 'deals', label: 'Deals', count: deals.length },
-    { key: 'meetings', label: 'Meetings', count: meetings.length },
-    { key: 'quotes', label: 'Quotes', count: quotes.length },
+    { key: 'activity',  label: 'Activity',  count: totalActivityCount },
+    { key: 'workspace', label: 'Workspace',  count: 0 },
+    { key: 'deals',     label: 'Deals',     count: deals.length },
+    { key: 'meetings',  label: 'Meetings',  count: meetings.length },
+    { key: 'quotes',    label: 'Quotes',    count: quotes.length },
   ]
 
   // Last 3 email events that contributed to score (OPEN or CLICK)
@@ -240,8 +242,38 @@ export default function LeadDetail() {
         </div>
       </div>
 
-      {/* Two-column layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+      {/* Primary tab bar — always visible */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+        <nav className="flex border-b border-gray-100 dark:border-gray-800">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium transition-colors ${
+                activeTab === tab.key
+                  ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >
+              {tab.key === 'workspace' && <Briefcase className="h-3.5 w-3.5" />}
+              {tab.label}
+              {tab.count > 0 && (
+                <span className="bg-gray-100 text-gray-600 text-xs rounded-full px-1.5 py-0.5">
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Full-width Deal Workspace section */}
+      {activeTab === 'workspace' && (
+        <DealWorkspace leadId={id} />
+      )}
+
+      {/* Two-column layout (hidden when workspace tab is active) */}
+      <div className={`grid grid-cols-1 xl:grid-cols-5 gap-6 ${activeTab === 'workspace' ? 'hidden' : ''}`}>
         {/* Left: Edit form (60%) */}
         <div className="xl:col-span-3">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -358,32 +390,8 @@ export default function LeadDetail() {
             </div>
           )}
 
-          {/* Activity tabs */}
+          {/* Activity content panel */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            {/* Tabs */}
-            <div className="border-b border-gray-100">
-              <nav className="flex">
-                {TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`flex-1 px-3 py-3 text-xs font-medium transition-colors ${
-                      activeTab === tab.key
-                        ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50'
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {tab.label}
-                    {tab.count > 0 && (
-                      <span className="ml-1 bg-gray-100 text-gray-600 text-xs rounded-full px-1.5 py-0.5">
-                        {tab.count}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </nav>
-            </div>
-
             <div className="p-4 max-h-96 overflow-y-auto">
               {/* Unified Activity Tab */}
               {activeTab === 'activity' && (

@@ -13,11 +13,12 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     User[]
-  leads     Lead[]
-  sequences EmailSequence[]
-  segments  Segment[]
-  pipelines Pipeline[]
+  users      User[]
+  leads      Lead[]
+  sequences  EmailSequence[]
+  segments   Segment[]
+  pipelines  Pipeline[]
+  workspaces DealWorkspace[]
 }
 
 model User {
@@ -76,6 +77,7 @@ model Lead {
   quotes      Quote[]
   emailEvents EmailEvent[]
   enrollments SequenceEnrollment[]
+  workspace   DealWorkspace?
 
   @@index([organizationId, status])
   @@index([organizationId, score])
@@ -278,4 +280,131 @@ model Segment {
   updatedAt      DateTime     @updatedAt
 
   @@index([organizationId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Deal Workspace — per-client closing engine
+// ─────────────────────────────────────────────────────────────
+
+model DealWorkspace {
+  id             String          @id @default(cuid())
+  leadId         String          @unique
+  lead           Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  currentStage   ClosingStage    @default(DEAL_INITIATED)
+  notes          String?         @db.Text
+  progress       WorkspaceProgress[]
+  documents      WorkspaceDocument[]
+  summary        DealSummary?
+  payments       Payment[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([organizationId])
+  @@index([leadId])
+}
+
+enum ClosingStage {
+  DEAL_INITIATED
+  PROPOSAL_SHARED
+  CONTRACT_SENT
+  CONTRACT_SIGNED
+  DEPOSIT_PAID
+  WORK_STARTED
+  FULLY_PAID
+}
+
+model WorkspaceProgress {
+  id          String          @id @default(cuid())
+  workspaceId String
+  workspace   DealWorkspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stage       ClosingStage
+  status      ProgressStatus  @default(PENDING)
+  completedAt DateTime?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([workspaceId, stage])
+  @@index([workspaceId])
+}
+
+enum ProgressStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+model WorkspaceDocument {
+  id          String           @id @default(cuid())
+  workspaceId String
+  workspace   DealWorkspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  category    DocumentCategory @default(OTHER)
+  fileUrl     String
+  fileSize    Int?
+  mimeType    String?
+  notes       String?
+  version     Int              @default(1)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([workspaceId])
+}
+
+enum DocumentCategory {
+  CONTRACT
+  INVOICE
+  PROPOSAL
+  LEGAL
+  COMMUNICATION
+  ASSET
+  OTHER
+}
+
+model DealSummary {
+  id               String        @id @default(cuid())
+  workspaceId      String        @unique
+  workspace        DealWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  serviceOffered   String?
+  scopeOfWork      String?       @db.Text
+  deliverables     String?       @db.Text
+  pricingBreakdown Json?
+  paymentStructure String?
+  timeline         String?
+  milestones       Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  workspaceId String
+  workspace   DealWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type        PaymentType   @default(INSTALLMENT)
+  amount      Float
+  dueDate     DateTime?
+  paidAt      DateTime?
+  status      PaymentStatus @default(UNPAID)
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([workspaceId])
+}
+
+enum PaymentType {
+  DEPOSIT
+  INSTALLMENT
+  FINAL
+  OTHER
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
 }

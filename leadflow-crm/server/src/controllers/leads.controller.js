@@ -160,6 +160,14 @@ const getLeadById = async (req, res, next) => {
         quotes: true,
         enrollments: { include: { sequence: true } },
         emailEvents: { orderBy: { createdAt: 'desc' }, take: 20 },
+        workspace: {
+          include: {
+            progress: { orderBy: { createdAt: 'asc' } },
+            documents: { orderBy: { createdAt: 'desc' } },
+            summary: true,
+            payments: { orderBy: { createdAt: 'asc' } },
+          },
+        },
       },
     });
 
