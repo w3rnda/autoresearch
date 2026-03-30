@@ -405,10 +405,11 @@ export default function Pipeline() {
   })
 
   // ── Pipeline list (tabs) ──────────────────────────────────────────────────
-  const { data: pipelinesRes, isLoading: pipelinesLoading } = useQuery({
+  const { data: pipelinesRes, isLoading: pipelinesLoading, isError: pipelinesError, refetch: refetchPipelines } = useQuery({
     queryKey: ['pipelines'],
     queryFn: () => pipelinesApi.getPipelines(),
     staleTime: 60_000,
+    retry: 0,
   })
   const pipelines = pipelinesRes?.data?.data ?? []
 
@@ -430,6 +431,7 @@ export default function Pipeline() {
       }),
     enabled: !pipelinesLoading && !!resolvedPipelineId,
     staleTime: 30_000,
+    retry: 0,
   })
 
   const activePipeline = boardData?.data?.data?.pipeline || null
@@ -503,6 +505,16 @@ export default function Pipeline() {
 
   if (pipelinesLoading) {
     return <div className="flex justify-center items-center h-64"><Spinner size="lg" /></div>
+  }
+
+  if (pipelinesError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
+        <p className="text-gray-500 dark:text-gray-400 font-medium">Could not reach the server</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500">Make sure the backend is running, then try again.</p>
+        <Button onClick={() => refetchPipelines()} size="sm" variant="secondary">Retry</Button>
+      </div>
+    )
   }
 
   return (
