@@ -1,0 +1,11 @@
+firstName,lastName,email,phone,company,source,status,score,tags
+Alice,Johnson,alice.johnson@techcorp.com,+1-555-0101,TechCorp Inc.,MANUAL,WARM,30,"enterprise,saas"
+Bob,Williams,bob.w@growthstartup.io,+1-555-0102,Growth Startup,CSV,HOT,70,"startup,b2b"
+Carol,Davis,carol.davis@marketingpro.com,+1-555-0103,Marketing Pro LLC,API,COLD,10,"marketing,smb"
+David,Martinez,d.martinez@retailchain.com,+1-555-0104,Retail Chain Group,MANUAL,WARM,40,"retail,enterprise"
+Emma,Thompson,emma.t@consultingfirm.net,+1-555-0105,Thompson Consulting,CSV,HOT,60,"consulting,services"
+Frank,Anderson,frank@devagency.co,+1-555-0106,Dev Agency Co,MANUAL,COLD,5,"agency,development"
+Grace,Wilson,grace.wilson@fintech.io,+1-555-0107,FinTech Solutions,API,CUSTOMER,90,"fintech,enterprise"
+Henry,Moore,h.moore@healthtech.com,+1-555-0108,HealthTech Innovations,MANUAL,WARM,35,"healthcare,saas"
+Iris,Taylor,iris.taylor@ecommerce.shop,+1-555-0109,Iris E-Commerce,CSV,COLD,15,"ecommerce,retail"
+Jack,Brown,jack.b@logisticspro.com,+1-555-0110,Logistics Pro Inc.,MANUAL,HOT,55,"logistics,enterprise"

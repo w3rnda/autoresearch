@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  leads     Lead[]
+  sequences EmailSequence[]
+  segments  Segment[]
+  pipelines Pipeline[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  password       String
+  name           String
+  role           Role         @default(SALES_REP)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  meetings       Meeting[]
+  notifications  Notification[]
+  refreshTokens  RefreshToken[]
+  assignedLeads  Lead[]       @relation("AssignedLeads")
+}
+
+enum Role {
+  ADMIN
+  SALES_REP
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Lead {
+  id              String     @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String
+  phone           String?
+  company         String?
+  source          LeadSource @default(MANUAL)
+  status          LeadStatus @default(COLD)
+  score           Int        @default(0)
+  engagementScore Int        @default(0)
+  fitScore        Int        @default(0)
+  tags            String[]
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  assignedToId    String?
+  assignedTo      User?      @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  deals       PipelineDeal[]
+  meetings    Meeting[]
+  quotes      Quote[]
+  emailEvents EmailEvent[]
+  enrollments SequenceEnrollment[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, score])
+  @@index([assignedToId])
+}
+
+enum LeadSource {
+  MANUAL
+  CSV
+  API
+  WEBSITE
+  REFERRAL
+  COLD_OUTREACH
+  SOCIAL_MEDIA
+  EVENT
+  OTHER
+}
+
+enum LeadStatus {
+  COLD
+  WARM
+  HOT
+  CUSTOMER
+}
+
+model EmailSequence {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  steps       SequenceStep[]
+  enrollments SequenceEnrollment[]
+}
+
+model SequenceStep {
+  id         String        @id @default(cuid())
+  sequenceId String
+  sequence   EmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  order      Int
+  subject    String
+  body       String        @db.Text
+  delayDays  Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model SequenceEnrollment {
+  id          String           @id @default(cuid())
+  leadId      String
+  lead        Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sequenceId  String
+  sequence    EmailSequence    @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  currentStep Int              @default(0)
+  status      EnrollmentStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([leadId, sequenceId])
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  UNSUBSCRIBED
+}
+
+model EmailEvent {
+  id        String    @id @default(cuid())
+  leadId    String
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type      EventType
+  metadata  Json?
+  createdAt DateTime  @default(now())
+}
+
+enum EventType {
+  OPEN
+  CLICK
+  SENT
+  BOUNCED
+}
+
+// Pipeline model — each org can have multiple named pipelines
+// stages is a JSON array of: { key, label, color, order, isWon?, isLost? }
+model Pipeline {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  type           PipelineType @default(STANDARD)
+  stages         Json
+  isDefault      Boolean      @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  deals          PipelineDeal[]
+
+  @@index([organizationId])
+}
+
+enum PipelineType {
+  STANDARD
+  CONTENT_DOWNLOAD
+  FREE_TRIAL
+  EVENT_WEBINAR
+  SOURCE_BASED
+}
+
+model PipelineDeal {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  pipelineId  String?
+  pipeline    Pipeline? @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
+  stage       String   @default("NEW")
+  value       Float    @default(0)
+  probability Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transitions StageTransition[]
+
+  @@index([pipelineId])
+  @@index([leadId])
+}
+
+model StageTransition {
+  id        String       @id @default(cuid())
+  dealId    String
+  deal      PipelineDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromStage String?
+  toStage   String
+  createdAt DateTime     @default(now())
+
+  @@index([dealId])
+  @@index([createdAt])
+  @@index([toStage])
+}
+
+model Meeting {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  scheduledAt DateTime
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  leadId      String
+  lead        Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  items       Json
+  taxRate     Float       @default(0)
+  totalAmount Float       @default(0)
+  status      QuoteStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  PAID
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String
+  type      NotificationType @default(INFO)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+model Segment {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  filters        Json
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
