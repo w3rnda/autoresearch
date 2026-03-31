@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2, Circle, Clock, ChevronRight, Upload, Trash2, FileText,
   DollarSign, Plus, Check, X, Edit2, Paperclip, AlertCircle, Loader2,
-  FileCheck, FileContract, Image, MessageSquare, Package, File,
+  FileCheck, FileSignature, MessageSquare, Package, File,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { workspaceApi } from '../../api/workspace.api'
@@ -70,7 +70,7 @@ const PAYMENT_STATUS_OPTIONS = [
 ]
 
 const DOC_CATEGORY_ICONS = {
-  CONTRACT:      <FileContract className="h-4 w-4" />,
+  CONTRACT:      <FileSignature className="h-4 w-4" />,
   INVOICE:       <DollarSign className="h-4 w-4" />,
   PROPOSAL:      <FileCheck className="h-4 w-4" />,
   LEGAL:         <FileText className="h-4 w-4" />,

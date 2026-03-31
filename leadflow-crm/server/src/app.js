@@ -34,10 +34,21 @@ app.use(compression());
 // HTTP request logging
 app.use(morgan('combined'));
 
-// CORS configuration
+// CORS configuration — in development, allow any localhost origin
+const corsOrigin = process.env.NODE_ENV === 'production'
+  ? process.env.FRONTEND_URL
+  : (origin, callback) => {
+      // Allow any localhost port, or requests with no origin (e.g. curl, Postman)
+      if (!origin || /^https?:\/\/localhost(:\d+)?$/.test(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    };
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: corsOrigin,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
