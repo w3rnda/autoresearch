@@ -371,7 +371,7 @@ function DocumentManager({ workspace, onUpload, onDelete, isUploading }) {
               </div>
               <div className="flex-1 min-w-0">
                 <a
-                  href={`http://localhost:3001${doc.fileUrl}`}
+                  href={`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${doc.fileUrl}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm font-medium text-indigo-600 hover:underline truncate block"
@@ -623,53 +623,53 @@ export default function DealWorkspace({ leadId }) {
 
   // Stage mutation
   const stageMutation = useMutation({
-    mutationFn: (stage) => workspaceApi.updateStage(workspace.id, stage),
+    mutationFn: (stage) => workspaceApi.updateStage(workspace?.id, stage),
     onSuccess: () => { invalidate(); toast.success('Stage updated') },
     onError: (err) => toast.error(err.response?.data?.error || 'Stage update failed'),
   })
 
   // Notes mutation
   const notesMutation = useMutation({
-    mutationFn: (notes) => workspaceApi.updateNotes(workspace.id, notes),
+    mutationFn: (notes) => workspaceApi.updateNotes(workspace?.id, notes),
     onSuccess: () => { invalidate(); toast.success('Notes saved') },
     onError: (err) => toast.error(err.response?.data?.error || 'Save failed'),
   })
 
   // Summary mutation
   const summaryMutation = useMutation({
-    mutationFn: (data) => workspaceApi.upsertSummary(workspace.id, data),
+    mutationFn: (data) => workspaceApi.upsertSummary(workspace?.id, data),
     onSuccess: () => { invalidate(); toast.success('Summary saved') },
     onError: (err) => toast.error(err.response?.data?.error || 'Save failed'),
   })
 
   // Document mutations
   const uploadMutation = useMutation({
-    mutationFn: (formData) => workspaceApi.uploadDocument(workspace.id, formData),
+    mutationFn: (formData) => workspaceApi.uploadDocument(workspace?.id, formData),
     onSuccess: () => { invalidate(); toast.success('File uploaded') },
     onError: (err) => toast.error(err.response?.data?.error || 'Upload failed'),
   })
 
   const deleteDocMutation = useMutation({
-    mutationFn: (docId) => workspaceApi.deleteDocument(workspace.id, docId),
+    mutationFn: (docId) => workspaceApi.deleteDocument(workspace?.id, docId),
     onSuccess: () => { invalidate(); toast.success('File removed') },
     onError: (err) => toast.error(err.response?.data?.error || 'Delete failed'),
   })
 
   // Payment mutations
   const createPaymentMutation = useMutation({
-    mutationFn: (data) => workspaceApi.createPayment(workspace.id, data),
+    mutationFn: (data) => workspaceApi.createPayment(workspace?.id, data),
     onSuccess: () => { invalidate(); toast.success('Payment added') },
     onError: (err) => toast.error(err.response?.data?.error || 'Failed to add payment'),
   })
 
   const updatePaymentMutation = useMutation({
-    mutationFn: ({ paymentId, data }) => workspaceApi.updatePayment(workspace.id, paymentId, data),
+    mutationFn: ({ paymentId, data }) => workspaceApi.updatePayment(workspace?.id, paymentId, data),
     onSuccess: () => { invalidate() },
     onError: (err) => toast.error(err.response?.data?.error || 'Update failed'),
   })
 
   const deletePaymentMutation = useMutation({
-    mutationFn: (paymentId) => workspaceApi.deletePayment(workspace.id, paymentId),
+    mutationFn: (paymentId) => workspaceApi.deletePayment(workspace?.id, paymentId),
     onSuccess: () => { invalidate(); toast.success('Payment removed') },
     onError: (err) => toast.error(err.response?.data?.error || 'Delete failed'),
   })
@@ -732,7 +732,7 @@ export default function DealWorkspace({ leadId }) {
           >
             {s.icon}
             {s.label}
-            {s.count > 0 && (
+            {(s.count ?? 0) > 0 && (
               <span className={`ml-0.5 rounded-full px-1.5 text-xs font-bold ${
                 activeSection === s.key ? 'bg-indigo-400 text-white' : 'bg-gray-200 text-gray-600'
               }`}>

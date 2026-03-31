@@ -265,9 +265,16 @@ const updateNotes = async (req, res, next) => {
     const updated = await prisma.dealWorkspace.update({
       where: { id },
       data: { notes },
+      include: {
+        progress: { orderBy: { createdAt: 'asc' } },
+        documents: { orderBy: { createdAt: 'desc' } },
+        summary: true,
+        payments: { orderBy: { createdAt: 'asc' } },
+        lead: { select: { id: true, firstName: true, lastName: true, status: true } },
+      },
     });
 
-    return res.status(200).json(successResponse(updated));
+    return res.status(200).json(successResponse({ ...updated, stageOrder: STAGE_ORDER, stageLabels: STAGE_LABELS }));
   } catch (error) {
     next(error);
   }
