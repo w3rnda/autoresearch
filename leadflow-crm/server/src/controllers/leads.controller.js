@@ -281,19 +281,74 @@ const importLeads = async (req, res, next) => {
       return res.status(400).json(errorResponse(`CSV parse error: ${parseError.message}`));
     }
 
-    const REQUIRED_FIELDS = ['firstName', 'lastName', 'email'];
+    // Normalize column names — map common alternate headers to the expected fields
+    const normalizeRow = (raw) => {
+      const get = (...keys) => {
+        for (const k of keys) {
+          // Try exact match, then case-insensitive match
+          if (raw[k] !== undefined && raw[k] !== '') return raw[k];
+          const lower = k.toLowerCase();
+          const found = Object.keys(raw).find((h) => h.toLowerCase() === lower);
+          if (found && raw[found] !== undefined && raw[found] !== '') return raw[found];
+        }
+        return '';
+      };
+
+      // Handle combined "Name" column → split into firstName / lastName
+      let firstName = get('firstName', 'first_name', 'First Name');
+      let lastName = get('lastName', 'last_name', 'Last Name');
+
+      if (!firstName && !lastName) {
+        const fullName = get('Name', 'name', 'Full Name', 'full_name', 'Contact', 'contact');
+        if (fullName) {
+          const parts = fullName.trim().split(/\s+/);
+          firstName = parts[0] || '';
+          lastName = parts.slice(1).join(' ') || '';
+        }
+      }
+
+      const email = get('email', 'Email', 'e-mail', 'E-mail', 'Email Address', 'email_address');
+      const phone = get('phone', 'Phone', 'telephone', 'Telephone', 'Phone Number', 'phone_number', 'Mobile', 'mobile');
+      const company = get('company', 'Company', 'organization', 'Organization', 'Company Name', 'company_name');
+      const status = get('status', 'Status', 'lead_status');
+      const rawTags = get('tags', 'Tags', 'tag', 'Category', 'category', 'categories', 'Industry', 'industry');
+      const title = get('title', 'Title', 'job_title', 'Job Title', 'Position', 'position', 'Role', 'role');
+      const country = get('country', 'Country', 'nation');
+      const city = get('city', 'City', 'location', 'Location');
+
+      // Build tags from tags column + category/title/country/city metadata
+      const tagParts = [];
+      if (rawTags) {
+        tagParts.push(...rawTags.split(rawTags.includes('|') ? '|' : ',').map((t) => t.trim()).filter(Boolean));
+      }
+      if (title) tagParts.push(title);
+      if (country) tagParts.push(country);
+      if (city) tagParts.push(city);
+
+      return { firstName, lastName, email, phone, company, status, tags: tagParts };
+    };
+
     const errors = [];
     const toCreate = [];
     const skipped = [];
 
     for (let i = 0; i < records.length; i++) {
-      const row = records[i];
+      const raw = records[i];
       const rowNum = i + 2; // 1-indexed + header row
 
+      // Skip rows that are completely empty or are index-only (e.g. "#" column)
+      const values = Object.values(raw).filter((v) => v && v.trim());
+      if (values.length === 0) continue;
+
+      const row = normalizeRow(raw);
+
       // Validate required fields
-      const missing = REQUIRED_FIELDS.filter((f) => !row[f]);
-      if (missing.length > 0) {
-        errors.push({ row: rowNum, reason: `Missing required fields: ${missing.join(', ')}` });
+      if (!row.firstName || !row.lastName) {
+        errors.push({ row: rowNum, reason: 'Missing name (need firstName + lastName, or a combined Name column)' });
+        continue;
+      }
+      if (!row.email) {
+        errors.push({ row: rowNum, reason: 'Missing email' });
         continue;
       }
 
@@ -311,9 +366,7 @@ const importLeads = async (req, res, next) => {
         company: row.company || null,
         source: 'CSV',
         status: ['COLD', 'WARM', 'HOT', 'CUSTOMER'].includes(row.status) ? row.status : 'COLD',
-        tags: row.tags
-          ? row.tags.split(row.tags.includes('|') ? '|' : ',').map((t) => t.trim()).filter(Boolean)
-          : [],
+        tags: row.tags.length > 0 ? row.tags : [],
         score: 0,
         engagementScore: 0,
         fitScore: 0,

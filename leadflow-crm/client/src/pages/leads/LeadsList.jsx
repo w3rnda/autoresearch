@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Upload, Search, Trash2, Edit2, Layers, X } from 'lucide-react'
+import { Plus, Upload, Search, Trash2, Edit2, Layers, X, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { leadsApi } from '../../api/leads.api'
 import { segmentsApi } from '../../api/segments.api'
@@ -115,63 +115,104 @@ function CreateLeadModal({ isOpen, onClose }) {
   )
 }
 
+/** Parse a single CSV line respecting quoted fields */
+function parseCsvLine(line) {
+  const fields = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (ch === ',' && !inQuotes) {
+      fields.push(current.trim())
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  fields.push(current.trim())
+  return fields
+}
+
 function ImportModal({ isOpen, onClose }) {
   const queryClient = useQueryClient()
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState([])
   const [headers, setHeaders] = useState([])
+  const [totalRows, setTotalRows] = useState(0)
+  const [dragging, setDragging] = useState(false)
   const fileRef = useRef()
 
-  /** Parse a single CSV line respecting quoted fields (handles commas inside quotes) */
-  const parseCsvLine = (line) => {
-    const fields = []
-    let current = ''
-    let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"'
-          i++ // skip escaped quote
-        } else {
-          inQuotes = !inQuotes
-        }
-      } else if (ch === ',' && !inQuotes) {
-        fields.push(current.trim())
-        current = ''
-      } else {
-        current += ch
-      }
+  const processFile = (f) => {
+    if (!f || !f.name.endsWith('.csv')) {
+      toast.error('Please select a .csv file')
+      return
     }
-    fields.push(current.trim())
-    return fields
-  }
-
-  const handleFile = (e) => {
-    const f = e.target.files[0]
-    if (!f) return
     setFile(f)
     const reader = new FileReader()
     reader.onload = (ev) => {
       const lines = ev.target.result.split('\n').filter(Boolean)
+      if (lines.length < 2) {
+        toast.error('CSV file is empty or has no data rows')
+        return
+      }
       const cols = parseCsvLine(lines[0])
       setHeaders(cols)
-      const rows = lines.slice(1, 4).map((line) => parseCsvLine(line))
+      setTotalRows(lines.length - 1)
+      const rows = lines.slice(1, 6).map((line) => parseCsvLine(line))
       setPreview(rows)
     }
     reader.readAsText(f)
+  }
+
+  const handleFile = (e) => {
+    processFile(e.target.files?.[0])
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragging(false)
+    const f = e.dataTransfer.files?.[0]
+    processFile(f)
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    setDragging(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    setDragging(false)
+  }
+
+  const reset = () => {
+    setFile(null)
+    setPreview([])
+    setHeaders([])
+    setTotalRows(0)
   }
 
   const mutation = useMutation({
     mutationFn: (formData) => leadsApi.importLeads(formData),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['leads'] })
-      const count = res.data?.data?.imported ?? res.data?.imported ?? '?'
-      toast.success(`Imported ${count} leads!`)
+      const data = res.data?.data ?? res.data ?? {}
+      const imported = data.imported ?? '?'
+      const skipped = data.skipped?.length ?? 0
+      const errors = data.errors?.length ?? 0
+      let msg = `Imported ${imported} leads!`
+      if (skipped > 0) msg += ` (${skipped} duplicates skipped)`
+      if (errors > 0) msg += ` (${errors} rows had errors)`
+      toast.success(msg)
       onClose()
-      setFile(null)
-      setPreview([])
-      setHeaders([])
+      reset()
     },
     onError: (err) => toast.error(err.response?.data?.error || 'Import failed'),
   })
@@ -186,43 +227,105 @@ function ImportModal({ isOpen, onClose }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Import Leads from CSV" size="lg">
       <div className="space-y-4">
+        {/* Drop zone */}
         <div
-          className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-indigo-400 transition-colors"
+          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+            dragging
+              ? 'border-indigo-500 bg-indigo-50 scale-[1.01]'
+              : file
+              ? 'border-green-400 bg-green-50'
+              : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
+          }`}
           onClick={() => fileRef.current?.click()}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
         >
-          <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-          <p className="text-sm text-gray-600">{file ? file.name : 'Click to select a CSV file'}</p>
           <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+          {file ? (
+            <div className="space-y-1">
+              <CheckCircle2 className="mx-auto h-8 w-8 text-green-500" />
+              <p className="text-sm font-medium text-green-700">{file.name}</p>
+              <p className="text-xs text-green-600">{totalRows} leads detected</p>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); reset() }}
+                className="text-xs text-gray-400 hover:text-red-500 underline mt-1"
+              >
+                Remove and select another file
+              </button>
+            </div>
+          ) : dragging ? (
+            <div className="space-y-1">
+              <Upload className="mx-auto h-8 w-8 text-indigo-500 animate-bounce" />
+              <p className="text-sm font-medium text-indigo-600">Drop your CSV here</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <Upload className="mx-auto h-8 w-8 text-gray-400" />
+              <p className="text-sm font-medium text-gray-600">Drag & drop your CSV file here</p>
+              <p className="text-xs text-gray-400">or click to browse</p>
+            </div>
+          )}
         </div>
 
+        {/* Column mapping hint */}
+        {headers.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <p className="text-xs font-medium text-blue-700 mb-1">Detected columns:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {headers.map((h) => (
+                <span key={h} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{h}</span>
+              ))}
+            </div>
+            <p className="text-xs text-blue-500 mt-2">
+              Columns are auto-mapped. Supports: Name (or firstName/lastName), Email, Company, Phone, Title, Status, Tags, Country, City, Category.
+            </p>
+          </div>
+        )}
+
+        {/* Preview table */}
         {preview.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="overflow-x-auto rounded-lg border border-gray-200 max-h-48">
             <table className="min-w-full text-xs">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0">
                 <tr>
+                  <th className="px-3 py-2 text-left text-gray-400 font-medium w-8">#</th>
                   {headers.map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-gray-500 font-medium">{h}</th>
+                    <th key={h} className="px-3 py-2 text-left text-gray-500 font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {preview.map((row, i) => (
-                  <tr key={i}>
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 text-gray-400">{i + 1}</td>
                     {row.map((cell, j) => (
-                      <td key={j} className="px-3 py-2 text-gray-700">{cell}</td>
+                      <td key={j} className="px-3 py-2 text-gray-700 max-w-[200px] truncate">{cell}</td>
                     ))}
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="text-xs text-gray-400 px-3 py-2">Showing first 3 rows preview</p>
+            <p className="text-xs text-gray-400 px-3 py-2 bg-gray-50">
+              Preview: {preview.length} of {totalRows} rows
+            </p>
           </div>
         )}
 
-        <div className="flex justify-end gap-3">
-          <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleImport} loading={mutation.isPending} disabled={!file}>
-            Import CSV
+        {/* Action bar — always visible */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+          <Button variant="secondary" type="button" onClick={() => { onClose(); reset() }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleImport}
+            loading={mutation.isPending}
+            disabled={!file}
+            size="lg"
+          >
+            <Upload className="h-4 w-4" />
+            {file ? `Import ${totalRows} Leads` : 'Import CSV'}
           </Button>
         </div>
       </div>
