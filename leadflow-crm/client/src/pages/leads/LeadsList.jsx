@@ -25,6 +25,9 @@ const STATUS_OPTIONS = [
 
 const SOURCE_OPTIONS = [
   { value: '', label: 'All Sources' },
+  { value: 'MANUAL', label: 'Manual' },
+  { value: 'CSV', label: 'CSV Import' },
+  { value: 'API', label: 'API' },
   { value: 'WEBSITE', label: 'Website' },
   { value: 'REFERRAL', label: 'Referral' },
   { value: 'COLD_OUTREACH', label: 'Cold Outreach' },
@@ -119,6 +122,31 @@ function ImportModal({ isOpen, onClose }) {
   const [headers, setHeaders] = useState([])
   const fileRef = useRef()
 
+  /** Parse a single CSV line respecting quoted fields (handles commas inside quotes) */
+  const parseCsvLine = (line) => {
+    const fields = []
+    let current = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"'
+          i++ // skip escaped quote
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if (ch === ',' && !inQuotes) {
+        fields.push(current.trim())
+        current = ''
+      } else {
+        current += ch
+      }
+    }
+    fields.push(current.trim())
+    return fields
+  }
+
   const handleFile = (e) => {
     const f = e.target.files[0]
     if (!f) return
@@ -126,11 +154,9 @@ function ImportModal({ isOpen, onClose }) {
     const reader = new FileReader()
     reader.onload = (ev) => {
       const lines = ev.target.result.split('\n').filter(Boolean)
-      const cols = lines[0].split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
+      const cols = parseCsvLine(lines[0])
       setHeaders(cols)
-      const rows = lines.slice(1, 4).map((line) =>
-        line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
-      )
+      const rows = lines.slice(1, 4).map((line) => parseCsvLine(line))
       setPreview(rows)
     }
     reader.readAsText(f)

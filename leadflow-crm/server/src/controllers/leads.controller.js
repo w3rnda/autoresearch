@@ -311,7 +311,9 @@ const importLeads = async (req, res, next) => {
         company: row.company || null,
         source: 'CSV',
         status: ['COLD', 'WARM', 'HOT', 'CUSTOMER'].includes(row.status) ? row.status : 'COLD',
-        tags: row.tags ? row.tags.split('|').map((t) => t.trim()).filter(Boolean) : [],
+        tags: row.tags
+          ? row.tags.split(row.tags.includes('|') ? '|' : ',').map((t) => t.trim()).filter(Boolean)
+          : [],
         score: 0,
         engagementScore: 0,
         fitScore: 0,
