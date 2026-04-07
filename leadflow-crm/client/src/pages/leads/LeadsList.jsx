@@ -226,95 +226,95 @@ function ImportModal({ isOpen, onClose }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Import Leads from CSV" size="lg">
-      <div className="space-y-4">
-        {/* Drop zone */}
-        <div
-          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-            dragging
-              ? 'border-indigo-500 bg-indigo-50 scale-[1.01]'
-              : file
-              ? 'border-green-400 bg-green-50'
-              : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
-          }`}
-          onClick={() => fileRef.current?.click()}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-        >
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
-          {file ? (
-            <div className="space-y-1">
-              <CheckCircle2 className="mx-auto h-8 w-8 text-green-500" />
-              <p className="text-sm font-medium text-green-700">{file.name}</p>
-              <p className="text-xs text-green-600">{totalRows} leads detected</p>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); reset() }}
-                className="text-xs text-gray-400 hover:text-red-500 underline mt-1"
-              >
-                Remove and select another file
-              </button>
+      <div className="flex flex-col -mb-4">
+        {/* Scrollable content */}
+        <div className="space-y-4 pb-4">
+          {/* Drop zone */}
+          <div
+            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+              dragging
+                ? 'border-indigo-500 bg-indigo-50 scale-[1.01]'
+                : file
+                ? 'border-green-400 bg-green-50'
+                : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
+            }`}
+            onClick={() => fileRef.current?.click()}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+          >
+            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+            {file ? (
+              <div className="space-y-1">
+                <CheckCircle2 className="mx-auto h-7 w-7 text-green-500" />
+                <p className="text-sm font-medium text-green-700">{file.name}</p>
+                <p className="text-xs text-green-600">{totalRows} leads detected</p>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); reset() }}
+                  className="text-xs text-gray-400 hover:text-red-500 underline mt-1"
+                >
+                  Remove and select another file
+                </button>
+              </div>
+            ) : dragging ? (
+              <div className="space-y-1">
+                <Upload className="mx-auto h-7 w-7 text-indigo-500 animate-bounce" />
+                <p className="text-sm font-medium text-indigo-600">Drop your CSV here</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Upload className="mx-auto h-7 w-7 text-gray-400" />
+                <p className="text-sm font-medium text-gray-600">Drag & drop your CSV file here</p>
+                <p className="text-xs text-gray-400">or click to browse</p>
+              </div>
+            )}
+          </div>
+
+          {/* Column mapping hint */}
+          {headers.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              <p className="text-xs font-medium text-blue-700 mb-1">Detected columns:</p>
+              <div className="flex flex-wrap gap-1">
+                {headers.map((h) => (
+                  <span key={h} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{h}</span>
+                ))}
+              </div>
             </div>
-          ) : dragging ? (
-            <div className="space-y-1">
-              <Upload className="mx-auto h-8 w-8 text-indigo-500 animate-bounce" />
-              <p className="text-sm font-medium text-indigo-600">Drop your CSV here</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <Upload className="mx-auto h-8 w-8 text-gray-400" />
-              <p className="text-sm font-medium text-gray-600">Drag & drop your CSV file here</p>
-              <p className="text-xs text-gray-400">or click to browse</p>
+          )}
+
+          {/* Preview table */}
+          {preview.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 max-h-36">
+              <table className="min-w-full text-xs">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left text-gray-400 font-medium w-8">#</th>
+                    {headers.map((h) => (
+                      <th key={h} className="px-2 py-1.5 text-left text-gray-500 font-medium whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {preview.map((row, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
+                      {row.map((cell, j) => (
+                        <td key={j} className="px-2 py-1.5 text-gray-700 max-w-[180px] truncate">{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-gray-400 px-2 py-1.5 bg-gray-50">
+                Preview: {preview.length} of {totalRows} rows
+              </p>
             </div>
           )}
         </div>
 
-        {/* Column mapping hint */}
-        {headers.length > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-            <p className="text-xs font-medium text-blue-700 mb-1">Detected columns:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {headers.map((h) => (
-                <span key={h} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{h}</span>
-              ))}
-            </div>
-            <p className="text-xs text-blue-500 mt-2">
-              Columns are auto-mapped. Supports: Name (or firstName/lastName), Email, Company, Phone, Title, Status, Tags, Country, City, Category.
-            </p>
-          </div>
-        )}
-
-        {/* Preview table */}
-        {preview.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-gray-200 max-h-48">
-            <table className="min-w-full text-xs">
-              <thead className="bg-gray-50 sticky top-0">
-                <tr>
-                  <th className="px-3 py-2 text-left text-gray-400 font-medium w-8">#</th>
-                  {headers.map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-gray-500 font-medium whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {preview.map((row, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                    {row.map((cell, j) => (
-                      <td key={j} className="px-3 py-2 text-gray-700 max-w-[200px] truncate">{cell}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="text-xs text-gray-400 px-3 py-2 bg-gray-50">
-              Preview: {preview.length} of {totalRows} rows
-            </p>
-          </div>
-        )}
-
-        {/* Action bar — always visible */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        {/* Sticky action bar — always visible at bottom */}
+        <div className="sticky bottom-0 flex items-center justify-between py-4 border-t border-gray-200 bg-white dark:bg-gray-900 -mx-6 px-6">
           <Button variant="secondary" type="button" onClick={() => { onClose(); reset() }}>
             Cancel
           </Button>
@@ -325,7 +325,7 @@ function ImportModal({ isOpen, onClose }) {
             size="lg"
           >
             <Upload className="h-4 w-4" />
-            {file ? `Import ${totalRows} Leads` : 'Import CSV'}
+            {file ? `Import ${totalRows} Leads into CRM` : 'Import CSV'}
           </Button>
         </div>
       </div>

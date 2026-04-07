@@ -28,14 +28,14 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
       style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div className={clsx('bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full', sizes[size])}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+      <div className={clsx('bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-h-[90vh] flex flex-col', sizes[size])}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="px-6 py-4">{children}</div>
+        <div className="px-6 py-4 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   )
