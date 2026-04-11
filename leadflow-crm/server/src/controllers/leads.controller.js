@@ -268,7 +268,18 @@ const importLeads = async (req, res, next) => {
     }
 
     const { organizationId } = req.user;
-    const csvContent = req.file.buffer.toString('utf-8');
+    const updateExisting = req.body?.updateExisting === 'true';
+    // Strip BOM (byte order mark) that Excel/Google Sheets may prepend
+    let csvContent = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, '');
+
+    // Auto-detect delimiter: if first line has more tabs or semicolons than commas, use that
+    const firstLine = csvContent.split('\n')[0] || '';
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const tabCount = (firstLine.match(/\t/g) || []).length;
+    const semiCount = (firstLine.match(/;/g) || []).length;
+    let delimiter = ',';
+    if (tabCount > commaCount && tabCount > semiCount) delimiter = '\t';
+    else if (semiCount > commaCount) delimiter = ';';
 
     let records;
     try {
@@ -276,9 +287,16 @@ const importLeads = async (req, res, next) => {
         columns: true,
         skip_empty_lines: true,
         trim: true,
+        delimiter,
+        relax_column_count: true,
+        relax_quotes: true,
       });
     } catch (parseError) {
       return res.status(400).json(errorResponse(`CSV parse error: ${parseError.message}`));
+    }
+
+    if (!records || records.length === 0) {
+      return res.status(400).json(errorResponse('CSV file has no data rows'));
     }
 
     // Normalize column names — map common alternate headers to the expected fields
@@ -342,10 +360,13 @@ const importLeads = async (req, res, next) => {
 
       const row = normalizeRow(raw);
 
-      // Validate required fields
-      if (!row.firstName || !row.lastName) {
-        errors.push({ row: rowNum, reason: 'Missing name (need firstName + lastName, or a combined Name column)' });
+      // Validate required fields — only firstName is strictly required; lastName defaults to '-'
+      if (!row.firstName) {
+        errors.push({ row: rowNum, reason: 'Missing name (need at least a Name or firstName column)' });
         continue;
+      }
+      if (!row.lastName) {
+        row.lastName = '-';
       }
       if (!row.email) {
         errors.push({ row: rowNum, reason: 'Missing email' });
@@ -374,39 +395,54 @@ const importLeads = async (req, res, next) => {
       });
     }
 
-    // Check for existing emails in DB to avoid duplicates
+    // Check for existing emails in DB
     const existingLeads = await prisma.lead.findMany({
       where: { organizationId, email: { in: toCreate.map((l) => l.email) } },
-      select: { email: true },
+      select: { id: true, email: true },
     });
-    const existingEmails = new Set(existingLeads.map((l) => l.email));
+    const existingEmailMap = new Map(existingLeads.map((l) => [l.email, l.id]));
 
-    const unique = [];
+    const toInsert = [];
+    const toUpdate = [];
     for (const lead of toCreate) {
-      if (existingEmails.has(lead.email)) {
-        skipped.push({ email: lead.email, reason: 'Duplicate email' });
+      if (existingEmailMap.has(lead.email)) {
+        if (updateExisting) {
+          toUpdate.push({ ...lead, id: existingEmailMap.get(lead.email) });
+        } else {
+          skipped.push({ email: lead.email, reason: 'Duplicate email' });
+        }
       } else {
-        unique.push(lead);
+        toInsert.push(lead);
       }
     }
 
     let imported = 0;
-    if (unique.length > 0) {
-      // Pre-compute round-robin assignments for the batch
-      const assignments = await assignBatchRoundRobin(organizationId, unique.length);
-      const uniqueWithAssignment = unique.map((lead, idx) => ({
+    let updated = 0;
+
+    // Insert new leads
+    if (toInsert.length > 0) {
+      const assignments = await assignBatchRoundRobin(organizationId, toInsert.length);
+      const insertData = toInsert.map((lead, idx) => ({
         ...lead,
         assignedToId: assignments[idx] || null,
       }));
-
-      const result = await prisma.lead.createMany({ data: uniqueWithAssignment, skipDuplicates: true });
+      const result = await prisma.lead.createMany({ data: insertData, skipDuplicates: true });
       imported = result.count;
+    }
+
+    // Update existing leads
+    if (toUpdate.length > 0) {
+      for (const lead of toUpdate) {
+        const { id, organizationId: _orgId, score, engagementScore, fitScore, ...updateData } = lead;
+        await prisma.lead.update({ where: { id }, data: updateData });
+      }
+      updated = toUpdate.length;
     }
 
     return res.status(200).json(
       successResponse(
-        { imported, skipped: skipped.length, errors: errors.length, errorDetails: errors, skippedDetails: skipped },
-        `Import complete: ${imported} imported, ${skipped.length} skipped, ${errors.length} errors`
+        { imported, updated, skipped: skipped.length, errors: errors.length, errorDetails: errors, skippedDetails: skipped },
+        `Import complete: ${imported} new, ${updated} updated, ${skipped.length} skipped, ${errors.length} errors`
       )
     );
   } catch (error) {

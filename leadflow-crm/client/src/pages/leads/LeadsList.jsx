@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Plus, Upload, Search, Trash2, Edit2, Layers, X, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { leadsApi } from '../../api/leads.api'
@@ -59,7 +59,7 @@ function CreateLeadModal({ isOpen, onClose }) {
   const mutation = useMutation({
     mutationFn: (data) => leadsApi.createLead(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.refetchQueries({ queryKey: ['leads'] })
       toast.success('Lead created!')
       onClose()
       setForm({ firstName: '', lastName: '', email: '', phone: '', company: '', source: '', status: 'COLD', tags: '' })
@@ -147,6 +147,7 @@ function ImportModal({ isOpen, onClose }) {
   const [headers, setHeaders] = useState([])
   const [totalRows, setTotalRows] = useState(0)
   const [dragging, setDragging] = useState(false)
+  const [updateExisting, setUpdateExisting] = useState(true)
   const fileRef = useRef()
 
   const processFile = (f) => {
@@ -202,15 +203,28 @@ function ImportModal({ isOpen, onClose }) {
   const mutation = useMutation({
     mutationFn: (formData) => leadsApi.importLeads(formData),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.refetchQueries({ queryKey: ['leads'] })
       const data = res.data?.data ?? res.data ?? {}
-      const imported = data.imported ?? '?'
-      const skipped = data.skipped?.length ?? 0
-      const errors = data.errors?.length ?? 0
-      let msg = `Imported ${imported} leads!`
-      if (skipped > 0) msg += ` (${skipped} duplicates skipped)`
-      if (errors > 0) msg += ` (${errors} rows had errors)`
-      toast.success(msg)
+      const imported = data.imported ?? 0
+      const updated = data.updated ?? 0
+      const skipped = data.skipped ?? 0
+      const errors = data.errors ?? 0
+      if (imported > 0 || updated > 0) {
+        let msg = ''
+        if (imported > 0) msg += `${imported} new leads imported`
+        if (updated > 0) msg += `${msg ? ', ' : ''}${updated} existing leads updated`
+        msg += '!'
+        if (skipped > 0) msg += ` ${skipped} skipped.`
+        if (errors > 0) msg += ` ${errors} rows had errors.`
+        toast.success(msg)
+      } else if (skipped > 0 && errors === 0) {
+        toast.error(`All ${skipped} leads already exist. Enable "Update existing leads" checkbox to overwrite them.`)
+      } else if (errors > 0) {
+        const details = (data.errorDetails || []).slice(0, 3).map((e) => `Row ${e.row}: ${e.reason}`).join('; ')
+        toast.error(`0 leads imported. ${errors} rows had errors. ${details}`)
+      } else {
+        toast.error('No leads were imported. Check that your CSV has Name and Email columns.')
+      }
       onClose()
       reset()
     },
@@ -221,6 +235,7 @@ function ImportModal({ isOpen, onClose }) {
     if (!file) return
     const fd = new FormData()
     fd.append('file', file)
+    fd.append('updateExisting', updateExisting ? 'true' : 'false')
     mutation.mutate(fd)
   }
 
@@ -313,6 +328,21 @@ function ImportModal({ isOpen, onClose }) {
           )}
         </div>
 
+        {/* Import options */}
+        {file && (
+          <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={updateExisting}
+                onChange={(e) => setUpdateExisting(e.target.checked)}
+                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">Update existing leads (overwrite duplicates by email)</span>
+            </label>
+          </div>
+        )}
+
         {/* Sticky action bar — always visible at bottom */}
         <div className="sticky bottom-0 flex items-center justify-between py-4 border-t border-gray-200 bg-white dark:bg-gray-900 -mx-6 px-6">
           <Button variant="secondary" type="button" onClick={() => { onClose(); reset() }}>
@@ -377,7 +407,8 @@ export default function LeadsList() {
           status: statusFilter || undefined,
           source: sourceFilter || undefined,
         }).then((r) => r.data),
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
+    staleTime: 0,
   })
 
   const leads = data?.data ?? []
@@ -388,7 +419,7 @@ export default function LeadsList() {
   const deleteMutation = useMutation({
     mutationFn: (id) => leadsApi.deleteLead(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] })
+      queryClient.refetchQueries({ queryKey: ['leads'] })
       toast.success('Lead deleted')
       setDeleteTarget(null)
     },
