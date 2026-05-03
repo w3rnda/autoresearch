@@ -1,0 +1,657 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  leads         Lead[]
+  sequences     EmailSequence[]
+  segments      Segment[]
+  pipelines     Pipeline[]
+  workspaces    DealWorkspace[]
+  gtmWorkspaces GtmWorkspace[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  password       String
+  name           String
+  role           Role         @default(SALES_REP)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  meetings       Meeting[]
+  notifications  Notification[]
+  refreshTokens  RefreshToken[]
+  assignedLeads  Lead[]       @relation("AssignedLeads")
+}
+
+enum Role {
+  ADMIN
+  SALES_REP
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Lead {
+  id              String     @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String
+  phone           String?
+  company         String?
+  title           String?    // Job title / position
+  website         String?    // Company or personal website
+  country         String?
+  city            String?
+  address         String?    // Full street address
+  linkedIn        String?    // LinkedIn profile URL
+  twitter         String?    // X / Twitter handle or URL
+  category        String?    // Business category (e.g. "Charter Operator")
+  industry        String?    // Industry vertical
+  companySize     String?    // e.g. "1-10", "51-200", "1000+"
+  icpFit          String?    // Ideal Customer Profile fit: HIGH / MEDIUM / LOW
+  notes           String?    // Free-text notes
+  customFields    Json?      // Catch-all JSON for any extra CSV / scraped data
+  source          LeadSource @default(MANUAL)
+  status          LeadStatus @default(COLD)
+  score           Int        @default(0)
+  engagementScore Int        @default(0)
+  fitScore        Int        @default(0)
+  tags            String[]
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  assignedToId    String?
+  assignedTo      User?      @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  deals       PipelineDeal[]
+  meetings    Meeting[]
+  quotes      Quote[]
+  emailEvents EmailEvent[]
+  enrollments SequenceEnrollment[]
+  workspace   DealWorkspace?
+  gtmEntities GtmEntity[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, score])
+  @@index([assignedToId])
+}
+
+enum LeadSource {
+  MANUAL
+  CSV
+  API
+  WEBSITE
+  REFERRAL
+  COLD_OUTREACH
+  SOCIAL_MEDIA
+  EVENT
+  GTM_ENGINE
+  OTHER
+}
+
+enum LeadStatus {
+  COLD
+  WARM
+  HOT
+  CUSTOMER
+}
+
+model EmailSequence {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  steps       SequenceStep[]
+  enrollments SequenceEnrollment[]
+}
+
+model SequenceStep {
+  id         String        @id @default(cuid())
+  sequenceId String
+  sequence   EmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  order      Int
+  subject    String
+  body       String        @db.Text
+  delayDays  Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model SequenceEnrollment {
+  id          String           @id @default(cuid())
+  leadId      String
+  lead        Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sequenceId  String
+  sequence    EmailSequence    @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  currentStep Int              @default(0)
+  status      EnrollmentStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([leadId, sequenceId])
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  UNSUBSCRIBED
+}
+
+model EmailEvent {
+  id        String    @id @default(cuid())
+  leadId    String
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type      EventType
+  metadata  Json?
+  createdAt DateTime  @default(now())
+}
+
+enum EventType {
+  OPEN
+  CLICK
+  SENT
+  BOUNCED
+}
+
+// Pipeline model — each org can have multiple named pipelines
+// stages is a JSON array of: { key, label, color, order, isWon?, isLost? }
+model Pipeline {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  type           PipelineType @default(STANDARD)
+  stages         Json
+  isDefault      Boolean      @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  deals          PipelineDeal[]
+
+  @@index([organizationId])
+}
+
+enum PipelineType {
+  STANDARD
+  CONTENT_DOWNLOAD
+  FREE_TRIAL
+  EVENT_WEBINAR
+  SOURCE_BASED
+}
+
+model PipelineDeal {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  pipelineId  String?
+  pipeline    Pipeline? @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
+  stage       String   @default("NEW")
+  value       Float    @default(0)
+  probability Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transitions StageTransition[]
+
+  @@index([pipelineId])
+  @@index([leadId])
+}
+
+model StageTransition {
+  id        String       @id @default(cuid())
+  dealId    String
+  deal      PipelineDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromStage String?
+  toStage   String
+  createdAt DateTime     @default(now())
+
+  @@index([dealId])
+  @@index([createdAt])
+  @@index([toStage])
+}
+
+model Meeting {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  scheduledAt DateTime
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  leadId      String
+  lead        Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  items       Json
+  taxRate     Float       @default(0)
+  totalAmount Float       @default(0)
+  status      QuoteStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  PAID
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String
+  type      NotificationType @default(INFO)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+model Segment {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  filters        Json
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Deal Workspace — per-client closing engine
+// ─────────────────────────────────────────────────────────────
+
+model DealWorkspace {
+  id             String          @id @default(cuid())
+  leadId         String          @unique
+  lead           Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  currentStage   ClosingStage    @default(DEAL_INITIATED)
+  notes          String?         @db.Text
+  progress       WorkspaceProgress[]
+  documents      WorkspaceDocument[]
+  summary        DealSummary?
+  payments       Payment[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([organizationId])
+  @@index([leadId])
+}
+
+enum ClosingStage {
+  DEAL_INITIATED
+  PROPOSAL_SHARED
+  CONTRACT_SENT
+  CONTRACT_SIGNED
+  DEPOSIT_PAID
+  WORK_STARTED
+  FULLY_PAID
+}
+
+model WorkspaceProgress {
+  id          String          @id @default(cuid())
+  workspaceId String
+  workspace   DealWorkspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stage       ClosingStage
+  status      ProgressStatus  @default(PENDING)
+  completedAt DateTime?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([workspaceId, stage])
+  @@index([workspaceId])
+}
+
+enum ProgressStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+model WorkspaceDocument {
+  id          String           @id @default(cuid())
+  workspaceId String
+  workspace   DealWorkspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  category    DocumentCategory @default(OTHER)
+  fileUrl     String
+  fileSize    Int?
+  mimeType    String?
+  notes       String?
+  version     Int              @default(1)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([workspaceId])
+}
+
+enum DocumentCategory {
+  CONTRACT
+  INVOICE
+  PROPOSAL
+  LEGAL
+  COMMUNICATION
+  ASSET
+  OTHER
+}
+
+model DealSummary {
+  id               String        @id @default(cuid())
+  workspaceId      String        @unique
+  workspace        DealWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  serviceOffered   String?
+  scopeOfWork      String?       @db.Text
+  deliverables     String?       @db.Text
+  pricingBreakdown Json?
+  paymentStructure String?
+  timeline         String?
+  milestones       Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  workspaceId String
+  workspace   DealWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type        PaymentType   @default(INSTALLMENT)
+  amount      Float
+  dueDate     DateTime?
+  paidAt      DateTime?
+  status      PaymentStatus @default(UNPAID)
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([workspaceId])
+}
+
+enum PaymentType {
+  DEPOSIT
+  INSTALLMENT
+  FINAL
+  OTHER
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+// ─────────────────────────────────────────────────────────────
+// GTM Engine — AI-driven Go-To-Market sourcing & signals
+// ─────────────────────────────────────────────────────────────
+
+model GtmWorkspace {
+  id             String             @id @default(cuid())
+  name           String
+  description    String?            @db.Text
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         GtmWorkspaceStatus @default(DRAFT)
+
+  // ICP Definition
+  icpDefinition  Json?              // { industries: [], companySizes: [], geos: [], keywords: [], exclusions: [] }
+  icpNatural     String?            @db.Text  // Natural language ICP for AI query generation
+
+  // Sourcing Configuration
+  sourcingConfig Json?              // { sources: ["google_maps", "vibe"], queries: [], scheduleHours: 6 }
+
+  // Enrichment Configuration
+  enrichConfig   Json?              // { providers: ["website", "vibe", "social"], waterfallOrder: [...] }
+
+  // Scoring Configuration
+  scoringConfig  Json?              // { weights: { signals: 0.4, fit: 0.3, engagement: 0.3 }, thresholds: { hot: 70, warm: 40 } }
+
+  // Auto-enroll into sequence on promotion
+  autoSequenceId String?
+
+  // Pipeline to push promoted leads into
+  autoPipelineId String?
+
+  // Auto-promote threshold (leads with gtmScore >= threshold auto-promote)
+  autoPromoteThreshold Int?
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // Relations
+  sourcingRuns   SourcingRun[]
+  entities       GtmEntity[]
+  signals        Signal[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum GtmWorkspaceStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+// Raw entity from sourcing (staging before promotion to Lead)
+model GtmEntity {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  workspace      GtmWorkspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Identity (used for dedup)
+  name           String
+  email          String?
+  phone          String?
+  website        String?
+  domain         String?         // Extracted from website/email
+  placeId        String?         // Google Maps place_id
+
+  // Raw scraped data (full payload from source)
+  rawData        Json
+
+  // Enriched data (populated progressively by enrichment pipeline)
+  enrichedData   Json?           // { techStack: [], emails: [], socials: {}, revenue: ... }
+
+  // Metadata
+  source         GtmEntitySource
+  sourceRef      String?         // External reference ID (Apify run ID, etc.)
+  status         GtmEntityStatus @default(NEW)
+
+  // Link to Lead (populated when entity is promoted)
+  leadId         String?
+  lead           Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  // AI Scoring
+  gtmScore       Int             @default(0)   // 0-100 AI-computed score
+  scoreBreakdown Json?           // { fit: 40, signals: 30, reasons: [...] }
+  outreachAngles Json?           // AI-generated recommended outreach angles
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  // Relations
+  snapshots      EntitySnapshot[]
+  signals        Signal[]
+  enrichmentLogs EnrichmentLog[]
+
+  @@unique([workspaceId, placeId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, gtmScore])
+  @@index([domain])
+  @@index([placeId])
+  @@index([leadId])
+}
+
+enum GtmEntitySource {
+  GOOGLE_MAPS
+  VIBE_PROSPECTING
+  WEB_SCRAPE
+  CSV_IMPORT
+  API_IMPORT
+  MANUAL
+}
+
+enum GtmEntityStatus {
+  NEW
+  ENRICHING
+  ENRICHED
+  SCORED
+  PROMOTED
+  REJECTED
+  DUPLICATE
+}
+
+// Historical snapshots for signal computation
+model EntitySnapshot {
+  id         String    @id @default(cuid())
+  entityId   String
+  entity     GtmEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  data       Json      // { reviewCount: 45, rating: 4.2, employeeCount: 12 }
+  capturedAt DateTime  @default(now())
+
+  @@index([entityId, capturedAt])
+}
+
+// Detected intent signals
+model Signal {
+  id          String       @id @default(cuid())
+  entityId    String
+  entity      GtmEntity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   GtmWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  type        SignalType
+  strength    Int          @default(50)  // 0-100 signal strength
+
+  previousValue Json?
+  currentValue  Json?
+  delta         Json?      // { reviewCount: +15, percentChange: 37.5 }
+
+  description String?      // "Review count grew 37% in 30 days"
+
+  detectedAt  DateTime     @default(now())
+  expiresAt   DateTime?
+
+  @@index([entityId, type])
+  @@index([workspaceId, detectedAt])
+}
+
+enum SignalType {
+  REVIEW_GROWTH
+  RATING_CHANGE
+  NEW_LOCATION
+  HIRING_SIGNAL
+  TECH_ADOPTION
+  FUNDING_EVENT
+  WEBSITE_CHANGE
+  SOCIAL_GROWTH
+  CONTENT_PUBLISHED
+  CUSTOM
+}
+
+// Enrichment audit trail
+model EnrichmentLog {
+  id         String              @id @default(cuid())
+  entityId   String
+  entity     GtmEntity           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  provider   String              // "apify", "vibe", "scraper"
+  action     String              // "extract-emails", "detect-tech"
+  status     EnrichmentLogStatus @default(PENDING)
+
+  input      Json?
+  output     Json?
+  error      String?
+
+  durationMs Int?
+  creditCost Float?
+
+  createdAt  DateTime            @default(now())
+
+  @@index([entityId])
+  @@index([provider, status])
+}
+
+enum EnrichmentLogStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+// Sourcing run — tracks each execution of a sourcing job
+model SourcingRun {
+  id               String            @id @default(cuid())
+  workspaceId      String
+  workspace        GtmWorkspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  source           GtmEntitySource
+  query            String?
+  config           Json?
+
+  status           SourcingRunStatus  @default(RUNNING)
+
+  entitiesFound    Int               @default(0)
+  entitiesNew      Int               @default(0)
+  entitiesDuplicate Int              @default(0)
+
+  error            String?
+  startedAt        DateTime          @default(now())
+  completedAt      DateTime?
+
+  @@index([workspaceId, startedAt])
+}
+
+enum SourcingRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}

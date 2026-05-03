@@ -1,0 +1,16 @@
+{
+  "name": "leadflow-tests",
+  "version": "1.0.0",
+  "description": "Playwright E2E tests for LeadFlow CRM + GTM Engine",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:gtm": "playwright test gtm-engine",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

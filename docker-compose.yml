@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: leadflow_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: leadflow
+      POSTGRES_USER: leadflow
+      POSTGRES_PASSWORD: leadflow123
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U leadflow -d leadflow']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: leadflow_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: leadflow_backend
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    environment:
+      DATABASE_URL: postgresql://leadflow:leadflow123@postgres:5432/leadflow
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ENABLE_GTM_WORKERS: 'true'
+      APIFY_API_TOKEN: ${APIFY_API_TOKEN:-}
+      JWT_SECRET: super-secret-jwt-key-for-development
+      JWT_REFRESH_SECRET: super-secret-refresh-key-for-development
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      NODE_ENV: development
+      PORT: 3001
+      FRONTEND_URL: http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./server/src:/app/src
+      - ./server/prisma:/app/prisma
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: leadflow_frontend
+    restart: unless-stopped
+    ports:
+      - '5173:5173'
+    environment:
+      VITE_API_URL: http://localhost:3001
+    depends_on:
+      - backend
+    volumes:
+      - ./client/src:/app/src
+
+volumes:
+  postgres_data:
+  redis_data:
