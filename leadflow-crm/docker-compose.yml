@@ -44,6 +44,10 @@ services:
     environment:
       DATABASE_URL: postgresql://leadflow:leadflow123@postgres:5432/leadflow
       REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ENABLE_GTM_WORKERS: 'true'
+      APIFY_API_TOKEN: ${APIFY_API_TOKEN:-}
       JWT_SECRET: super-secret-jwt-key-for-development
       JWT_REFRESH_SECRET: super-secret-refresh-key-for-development
       JWT_EXPIRES_IN: 15m

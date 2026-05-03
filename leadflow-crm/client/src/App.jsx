@@ -17,6 +17,8 @@ import TeamSettings from './pages/settings/TeamSettings'
 import Notifications from './pages/notifications/Notifications'
 import Analytics from './pages/analytics/Analytics'
 import SegmentsList from './pages/segments/SegmentsList'
+import GtmDashboard from './pages/gtm/GtmDashboard'
+import GtmWorkspaceDetail from './pages/gtm/GtmWorkspaceDetail'
 
 function PrivateRoute({ children }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated)
@@ -53,6 +55,8 @@ export default function App() {
           <Route path="notifications" element={<Notifications />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="segments" element={<SegmentsList />} />
+          <Route path="gtm" element={<GtmDashboard />} />
+          <Route path="gtm/:workspaceId" element={<GtmWorkspaceDetail />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -90,6 +90,18 @@ export default function LeadDetail() {
           email: lead.email || '',
           phone: lead.phone || '',
           company: lead.company || '',
+          title: lead.title || '',
+          website: lead.website || '',
+          country: lead.country || '',
+          city: lead.city || '',
+          address: lead.address || '',
+          linkedIn: lead.linkedIn || '',
+          twitter: lead.twitter || '',
+          category: lead.category || '',
+          industry: lead.industry || '',
+          companySize: lead.companySize || '',
+          icpFit: lead.icpFit || '',
+          notes: lead.notes || '',
           source: lead.source || '',
           status: lead.status || 'COLD',
           tags: (lead.tags || []).join(', '),
@@ -170,6 +182,18 @@ export default function LeadDetail() {
     email: lead.email || '',
     phone: lead.phone || '',
     company: lead.company || '',
+    title: lead.title || '',
+    website: lead.website || '',
+    country: lead.country || '',
+    city: lead.city || '',
+    address: lead.address || '',
+    linkedIn: lead.linkedIn || '',
+    twitter: lead.twitter || '',
+    category: lead.category || '',
+    industry: lead.industry || '',
+    companySize: lead.companySize || '',
+    icpFit: lead.icpFit || '',
+    notes: lead.notes || '',
     source: lead.source || '',
     status: lead.status || 'COLD',
     tags: (lead.tags || []).join(', '),
@@ -211,7 +235,12 @@ export default function LeadDetail() {
             <h1 className="text-2xl font-bold text-gray-900">
               {lead.firstName} {lead.lastName}
             </h1>
-            <p className="text-gray-500 text-sm mt-0.5">{lead.company || lead.email}</p>
+            <p className="text-gray-500 text-sm mt-0.5">
+              {[lead.title, lead.company].filter(Boolean).join(' at ') || lead.email}
+            </p>
+            {(lead.city || lead.country) && (
+              <p className="text-gray-400 text-xs mt-0.5">{[lead.city, lead.country].filter(Boolean).join(', ')}</p>
+            )}
             <div className="flex items-center gap-3 mt-1">
               <Badge variant={STATUS_BADGE_MAP[lead.status] || 'gray'}>{lead.status}</Badge>
               <ScoreGauge score={lead.score ?? 0} />
@@ -278,64 +307,104 @@ export default function LeadDetail() {
         <div className="xl:col-span-3">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <h2 className="text-base font-semibold text-gray-800 mb-4">Lead Details</h2>
-            <form onSubmit={handleSave} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="First Name"
-                  value={currentForm.firstName}
-                  onChange={setField('firstName')}
-                  placeholder="Jane"
+            <form onSubmit={handleSave} className="space-y-5">
+              {/* Contact Info */}
+              <fieldset>
+                <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Contact</legend>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="First Name" value={currentForm.firstName} onChange={setField('firstName')} placeholder="Jane" />
+                    <Input label="Last Name" value={currentForm.lastName} onChange={setField('lastName')} placeholder="Doe" />
+                  </div>
+                  <Input label="Email" type="email" value={currentForm.email} onChange={setField('email')} placeholder="jane@example.com" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="Phone" type="tel" value={currentForm.phone} onChange={setField('phone')} placeholder="+1 555 000 0000" />
+                    <Input label="Title / Position" value={currentForm.title} onChange={setField('title')} placeholder="Managing Director" />
+                  </div>
+                </div>
+              </fieldset>
+
+              {/* Company Info */}
+              <fieldset>
+                <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Company</legend>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="Company" value={currentForm.company} onChange={setField('company')} placeholder="Acme Corp" />
+                    <Input label="Website" value={currentForm.website} onChange={setField('website')} placeholder="acme.com" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Input label="Category" value={currentForm.category} onChange={setField('category')} placeholder="Charter Operator" />
+                    <Input label="Industry" value={currentForm.industry} onChange={setField('industry')} placeholder="Aviation" />
+                    <Input label="Company Size" value={currentForm.companySize} onChange={setField('companySize')} placeholder="51-200" />
+                  </div>
+                </div>
+              </fieldset>
+
+              {/* Location */}
+              <fieldset>
+                <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Location</legend>
+                <div className="grid grid-cols-3 gap-3">
+                  <Input label="City" value={currentForm.city} onChange={setField('city')} placeholder="Nairobi" />
+                  <Input label="Country" value={currentForm.country} onChange={setField('country')} placeholder="Kenya" />
+                  <Input label="Address" value={currentForm.address} onChange={setField('address')} placeholder="123 Main St" />
+                </div>
+              </fieldset>
+
+              {/* Social & Web */}
+              <fieldset>
+                <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Social</legend>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="LinkedIn" value={currentForm.linkedIn} onChange={setField('linkedIn')} placeholder="linkedin.com/in/..." />
+                  <Input label="Twitter / X" value={currentForm.twitter} onChange={setField('twitter')} placeholder="@handle" />
+                </div>
+              </fieldset>
+
+              {/* Classification */}
+              <fieldset>
+                <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Classification</legend>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <Select label="Status" options={STATUS_OPTIONS} value={currentForm.status} onChange={setField('status')} />
+                    <Select label="Source" options={SOURCE_OPTIONS} value={currentForm.source} onChange={setField('source')} placeholder="Select source" />
+                    <Select
+                      label="ICP Fit"
+                      options={[{ value: 'HIGH', label: 'High' }, { value: 'MEDIUM', label: 'Medium' }, { value: 'LOW', label: 'Low' }]}
+                      value={currentForm.icpFit}
+                      onChange={setField('icpFit')}
+                      placeholder="Select fit"
+                    />
+                  </div>
+                  <Input label="Tags (comma-separated)" value={currentForm.tags} onChange={setField('tags')} placeholder="vip, aviation, follow-up" />
+                </div>
+              </fieldset>
+
+              {/* Notes */}
+              <fieldset>
+                <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Notes</legend>
+                <textarea
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[80px]"
+                  value={currentForm.notes}
+                  onChange={setField('notes')}
+                  placeholder="Add notes about this lead..."
+                  rows={3}
                 />
-                <Input
-                  label="Last Name"
-                  value={currentForm.lastName}
-                  onChange={setField('lastName')}
-                  placeholder="Doe"
-                />
-              </div>
-              <Input
-                label="Email"
-                type="email"
-                value={currentForm.email}
-                onChange={setField('email')}
-                placeholder="jane@example.com"
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Phone"
-                  type="tel"
-                  value={currentForm.phone}
-                  onChange={setField('phone')}
-                  placeholder="+1 555 000 0000"
-                />
-                <Input
-                  label="Company"
-                  value={currentForm.company}
-                  onChange={setField('company')}
-                  placeholder="Acme Corp"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Select
-                  label="Source"
-                  options={SOURCE_OPTIONS}
-                  value={currentForm.source}
-                  onChange={setField('source')}
-                  placeholder="Select source"
-                />
-                <Select
-                  label="Status"
-                  options={STATUS_OPTIONS}
-                  value={currentForm.status}
-                  onChange={setField('status')}
-                />
-              </div>
-              <Input
-                label="Tags (comma-separated)"
-                value={currentForm.tags}
-                onChange={setField('tags')}
-                placeholder="vip, follow-up"
-              />
+              </fieldset>
+
+              {/* Custom Fields (read-only display from CSV/scraped data) */}
+              {lead.customFields && Object.keys(lead.customFields).length > 0 && (
+                <fieldset>
+                  <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Additional Data</legend>
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+                    {Object.entries(lead.customFields).map(([key, value]) => (
+                      <div key={key} className="flex gap-2 text-sm">
+                        <span className="text-gray-500 font-medium min-w-[140px] shrink-0">{key}:</span>
+                        <span className="text-gray-700 dark:text-gray-300 break-words">{String(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+
               <div className="flex justify-end pt-2">
                 <Button type="submit" loading={updateMutation.isPending}>Save Changes</Button>
               </div>

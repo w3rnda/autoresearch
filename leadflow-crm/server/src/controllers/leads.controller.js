@@ -77,7 +77,11 @@ const getLeads = async (req, res, next) => {
  */
 const createLead = async (req, res, next) => {
   try {
-    const { firstName, lastName, email, phone, company, source, status, tags, assignedToId } = req.body;
+    const {
+      firstName, lastName, email, phone, company, source, status, tags, assignedToId,
+      title, website, country, city, address, linkedIn, twitter,
+      category, industry, companySize, icpFit, notes, customFields,
+    } = req.body;
     const { organizationId } = req.user;
 
     const existing = await prisma.lead.findFirst({
@@ -96,6 +100,19 @@ const createLead = async (req, res, next) => {
       email,
       phone: phone || null,
       company: company || null,
+      title: title || null,
+      website: website || null,
+      country: country || null,
+      city: city || null,
+      address: address || null,
+      linkedIn: linkedIn || null,
+      twitter: twitter || null,
+      category: category || null,
+      industry: industry || null,
+      companySize: companySize || null,
+      icpFit: icpFit || null,
+      notes: notes || null,
+      customFields: customFields || undefined,
       source: source || 'MANUAL',
       status: status || 'COLD',
       tags: tags || [],
@@ -194,7 +211,11 @@ const updateLead = async (req, res, next) => {
       return res.status(404).json(errorResponse('Lead not found'));
     }
 
-    const { firstName, lastName, email, phone, company, status, tags, score, assignedToId } = req.body;
+    const {
+      firstName, lastName, email, phone, company, status, tags, score, assignedToId,
+      title, website, country, city, address, linkedIn, twitter,
+      category, industry, companySize, icpFit, notes, customFields,
+    } = req.body;
 
     // If email is changing, check for duplicates
     if (email && email !== existing.email) {
@@ -206,19 +227,19 @@ const updateLead = async (req, res, next) => {
       }
     }
 
+    const updateData = {};
+    const fields = {
+      firstName, lastName, email, phone, company, status, tags, score, assignedToId,
+      title, website, country, city, address, linkedIn, twitter,
+      category, industry, companySize, icpFit, notes, customFields,
+    };
+    for (const [key, val] of Object.entries(fields)) {
+      if (val !== undefined) updateData[key] = val;
+    }
+
     const updated = await prisma.lead.update({
       where: { id },
-      data: {
-        ...(firstName !== undefined && { firstName }),
-        ...(lastName !== undefined && { lastName }),
-        ...(email !== undefined && { email }),
-        ...(phone !== undefined && { phone }),
-        ...(company !== undefined && { company }),
-        ...(status !== undefined && { status }),
-        ...(tags !== undefined && { tags }),
-        ...(score !== undefined && { score }),
-        ...(assignedToId !== undefined && { assignedToId }),
-      },
+      data: updateData,
       include: { assignedTo: { select: { id: true, name: true } } },
     });
 
@@ -299,11 +320,32 @@ const importLeads = async (req, res, next) => {
       return res.status(400).json(errorResponse('CSV file has no data rows'));
     }
 
+    // Known column names that map to structured Lead fields (case-insensitive)
+    const KNOWN_KEYS = new Set([
+      '#', 'firstname', 'first_name', 'first name', 'lastname', 'last_name', 'last name',
+      'name', 'full name', 'full_name', 'contact',
+      'email', 'e-mail', 'email address', 'email_address',
+      'phone', 'telephone', 'phone number', 'phone_number', 'mobile',
+      'company', 'organization', 'company name', 'company_name',
+      'title', 'job_title', 'job title', 'position', 'role',
+      'website', 'url', 'web', 'site', 'company website', 'company_website',
+      'country', 'nation', 'city', 'location', 'address', 'street', 'street address',
+      'linkedin', 'linked_in', 'linkedin url', 'linkedin_url',
+      'twitter', 'x', 'twitter url', 'twitter_url',
+      'category', 'categories', 'business category', 'type',
+      'industry', 'sector', 'vertical',
+      'company size', 'company_size', 'companysize', 'employees', 'size',
+      'icp fit', 'icp_fit', 'icpfit', 'icp', 'fit', 'fit score',
+      'notes', 'note', 'comments', 'comment', 'description',
+      'tags', 'tag', 'labels',
+      'status', 'lead_status', 'lead status',
+      'source', 'lead_source', 'lead source',
+    ]);
+
     // Normalize column names — map common alternate headers to the expected fields
     const normalizeRow = (raw) => {
       const get = (...keys) => {
         for (const k of keys) {
-          // Try exact match, then case-insensitive match
           if (raw[k] !== undefined && raw[k] !== '') return raw[k];
           const lower = k.toLowerCase();
           const found = Object.keys(raw).find((h) => h.toLowerCase() === lower);
@@ -315,7 +357,6 @@ const importLeads = async (req, res, next) => {
       // Handle combined "Name" column → split into firstName / lastName
       let firstName = get('firstName', 'first_name', 'First Name');
       let lastName = get('lastName', 'last_name', 'Last Name');
-
       if (!firstName && !lastName) {
         const fullName = get('Name', 'name', 'Full Name', 'full_name', 'Contact', 'contact');
         if (fullName) {
@@ -328,22 +369,42 @@ const importLeads = async (req, res, next) => {
       const email = get('email', 'Email', 'e-mail', 'E-mail', 'Email Address', 'email_address');
       const phone = get('phone', 'Phone', 'telephone', 'Telephone', 'Phone Number', 'phone_number', 'Mobile', 'mobile');
       const company = get('company', 'Company', 'organization', 'Organization', 'Company Name', 'company_name');
-      const status = get('status', 'Status', 'lead_status');
-      const rawTags = get('tags', 'Tags', 'tag', 'Category', 'category', 'categories', 'Industry', 'industry');
       const title = get('title', 'Title', 'job_title', 'Job Title', 'Position', 'position', 'Role', 'role');
+      const website = get('website', 'Website', 'url', 'URL', 'Web', 'Site', 'Company Website', 'company_website');
       const country = get('country', 'Country', 'nation');
       const city = get('city', 'City', 'location', 'Location');
+      const address = get('address', 'Address', 'street', 'Street', 'Street Address');
+      const linkedIn = get('linkedin', 'LinkedIn', 'linked_in', 'LinkedIn URL', 'linkedin_url');
+      const twitter = get('twitter', 'Twitter', 'x', 'X', 'Twitter URL', 'twitter_url');
+      const category = get('category', 'Category', 'categories', 'Business Category', 'type', 'Type');
+      const industry = get('industry', 'Industry', 'sector', 'Sector', 'vertical', 'Vertical');
+      const companySize = get('company size', 'Company Size', 'company_size', 'companySize', 'employees', 'Employees', 'size');
+      const icpFit = get('icp fit', 'ICP Fit', 'icp_fit', 'icpFit', 'ICP', 'fit', 'Fit Score');
+      const notes = get('notes', 'Notes', 'note', 'Note', 'comments', 'Comments', 'description', 'Description');
+      const status = get('status', 'Status', 'lead_status');
+      const rawTags = get('tags', 'Tags', 'tag', 'labels', 'Labels');
 
-      // Build tags from tags column + category/title/country/city metadata
+      // Build tags from tags column + category metadata
       const tagParts = [];
       if (rawTags) {
         tagParts.push(...rawTags.split(rawTags.includes('|') ? '|' : ',').map((t) => t.trim()).filter(Boolean));
       }
-      if (title) tagParts.push(title);
-      if (country) tagParts.push(country);
-      if (city) tagParts.push(city);
+      if (category) tagParts.push(category);
 
-      return { firstName, lastName, email, phone, company, status, tags: tagParts };
+      // Capture ALL unrecognized columns into customFields JSON
+      const customFields = {};
+      for (const [header, value] of Object.entries(raw)) {
+        if (!value || !value.trim()) continue;
+        if (KNOWN_KEYS.has(header.toLowerCase())) continue;
+        customFields[header] = value.trim();
+      }
+
+      return {
+        firstName, lastName, email, phone, company, title, website,
+        country, city, address, linkedIn, twitter, category, industry,
+        companySize, icpFit, notes, status, tags: tagParts,
+        customFields: Object.keys(customFields).length > 0 ? customFields : null,
+      };
     };
 
     const errors = [];
@@ -368,23 +429,53 @@ const importLeads = async (req, res, next) => {
       if (!row.lastName) {
         row.lastName = '-';
       }
-      if (!row.email) {
+
+      // Email: take the first one if multiple are pipe-separated
+      let email = row.email;
+      if (email && email.includes('|')) {
+        email = email.split('|').map((e) => e.trim()).find((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) || email.split('|')[0].trim();
+      }
+      // Try to extract email from "Via domain.com" pattern
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        const viaMatch = (row.email || '').match(/^via\s+(\S+)/i);
+        if (viaMatch) {
+          email = `info@${viaMatch[1]}`;
+        }
+      }
+      if (!email) {
         errors.push({ row: rowNum, reason: 'Missing email' });
         continue;
       }
-
-      // Basic email validation
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
-        errors.push({ row: rowNum, reason: `Invalid email: ${row.email}` });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.push({ row: rowNum, reason: `Invalid email: ${email}` });
         continue;
+      }
+
+      // Phone: take the first one if multiple are pipe-separated
+      let phone = row.phone || null;
+      if (phone && phone.includes('|')) {
+        phone = phone.split('|')[0].trim();
       }
 
       toCreate.push({
         firstName: row.firstName,
         lastName: row.lastName,
-        email: row.email.toLowerCase(),
-        phone: row.phone || null,
+        email: email.toLowerCase(),
+        phone,
         company: row.company || null,
+        title: row.title || null,
+        website: row.website || null,
+        country: row.country || null,
+        city: row.city || null,
+        address: row.address || null,
+        linkedIn: row.linkedIn || null,
+        twitter: row.twitter || null,
+        category: row.category || null,
+        industry: row.industry || null,
+        companySize: row.companySize || null,
+        icpFit: row.icpFit || null,
+        notes: row.notes || null,
+        customFields: row.customFields,
         source: 'CSV',
         status: ['COLD', 'WARM', 'HOT', 'CUSTOMER'].includes(row.status) ? row.status : 'COLD',
         tags: row.tags.length > 0 ? row.tags : [],

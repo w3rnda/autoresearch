@@ -22,6 +22,7 @@ const analyticsRoutes = require('./routes/analytics.routes');
 const segmentsRoutes = require('./routes/segments.routes');
 const pipelinesRoutes = require('./routes/pipelines.routes');
 const workspaceRoutes = require('./routes/workspace.routes');
+const gtmRoutes = require('./routes/gtm.routes');
 
 const app = express();
 
@@ -92,6 +93,7 @@ app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/segments', segmentsRoutes);
 app.use('/api/v1/pipelines', pipelinesRoutes);
 app.use('/api/v1/workspace', workspaceRoutes);
+app.use('/api/v1/gtm', gtmRoutes);
 
 // Serve uploaded documents
 app.use('/uploads', express.static(require('path').join(__dirname, '../uploads')));

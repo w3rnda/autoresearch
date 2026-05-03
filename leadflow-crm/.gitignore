@@ -50,3 +50,11 @@ Thumbs.db
 # Temp
 tmp/
 temp/
+
+# Playwright
+tests/playwright-report/
+tests/test-results/
+tests/playwright/.cache/
+
+# Local data
+*.local.json

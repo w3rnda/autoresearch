@@ -49,12 +49,16 @@ function scoreColor(score) {
   return 'text-gray-400'
 }
 
+const EMPTY_FORM = {
+  firstName: '', lastName: '', email: '', phone: '',
+  company: '', title: '', website: '', country: '', city: '',
+  linkedIn: '', category: '', industry: '', icpFit: '',
+  notes: '', source: '', status: 'COLD', tags: '',
+}
+
 function CreateLeadModal({ isOpen, onClose }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({
-    firstName: '', lastName: '', email: '', phone: '',
-    company: '', source: '', status: 'COLD', tags: '',
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
 
   const mutation = useMutation({
     mutationFn: (data) => leadsApi.createLead(data),
@@ -62,7 +66,7 @@ function CreateLeadModal({ isOpen, onClose }) {
       queryClient.refetchQueries({ queryKey: ['leads'] })
       toast.success('Lead created!')
       onClose()
-      setForm({ firstName: '', lastName: '', email: '', phone: '', company: '', source: '', status: 'COLD', tags: '' })
+      setForm(EMPTY_FORM)
     },
     onError: (err) => toast.error(err.response?.data?.error || 'Failed to create lead'),
   })
@@ -88,24 +92,39 @@ function CreateLeadModal({ isOpen, onClose }) {
         <Input label="Email *" type="email" value={form.email} onChange={set('email')} placeholder="jane@example.com" required />
         <div className="grid grid-cols-2 gap-4">
           <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+1 555 000 0000" />
-          <Input label="Company" value={form.company} onChange={set('company')} placeholder="Acme Corp" />
+          <Input label="Title / Position" value={form.title} onChange={set('title')} placeholder="Managing Director" />
         </div>
         <div className="grid grid-cols-2 gap-4">
+          <Input label="Company" value={form.company} onChange={set('company')} placeholder="Caverton Helicopters" />
+          <Input label="Website" value={form.website} onChange={set('website')} placeholder="caverton.com" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Country" value={form.country} onChange={set('country')} placeholder="Kenya" />
+          <Input label="City" value={form.city} onChange={set('city')} placeholder="Nairobi" />
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Input label="Category" value={form.category} onChange={set('category')} placeholder="Charter Operator" />
+          <Input label="Industry" value={form.industry} onChange={set('industry')} placeholder="Aviation" />
           <Select
-            label="Source"
-            options={SOURCE_OPTIONS.slice(1)}
-            value={form.source}
-            onChange={set('source')}
-            placeholder="Select source"
-          />
-          <Select
-            label="Status"
-            options={STATUS_OPTIONS.slice(1)}
-            value={form.status}
-            onChange={set('status')}
+            label="ICP Fit"
+            options={[{ value: '', label: 'Select' }, { value: 'HIGH', label: 'High' }, { value: 'MEDIUM', label: 'Medium' }, { value: 'LOW', label: 'Low' }]}
+            value={form.icpFit}
+            onChange={set('icpFit')}
           />
         </div>
-        <Input label="Tags (comma-separated)" value={form.tags} onChange={set('tags')} placeholder="vip, follow-up" />
+        <Input label="LinkedIn" value={form.linkedIn} onChange={set('linkedIn')} placeholder="linkedin.com/in/..." />
+        <div className="grid grid-cols-2 gap-4">
+          <Select label="Source" options={SOURCE_OPTIONS.slice(1)} value={form.source} onChange={set('source')} placeholder="Select source" />
+          <Select label="Status" options={STATUS_OPTIONS.slice(1)} value={form.status} onChange={set('status')} />
+        </div>
+        <Input label="Tags (comma-separated)" value={form.tags} onChange={set('tags')} placeholder="vip, aviation, follow-up" />
+        <textarea
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          value={form.notes}
+          onChange={set('notes')}
+          placeholder="Notes about this lead..."
+          rows={2}
+        />
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={mutation.isPending}>Create Lead</Button>
@@ -506,11 +525,11 @@ export default function LeadsList() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ICP</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -528,34 +547,41 @@ export default function LeadsList() {
                       <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 flex-shrink-0">
                         {getInitials(lead.firstName, lead.lastName)}
                       </div>
-                      <span className="text-sm font-medium text-gray-900">
-                        {lead.firstName} {lead.lastName}
-                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {lead.firstName} {lead.lastName}
+                        </p>
+                        {lead.title && <p className="text-xs text-gray-400 truncate">{lead.title}</p>}
+                      </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{lead.email}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{lead.company || '—'}</td>
+                  <td className="px-6 py-4">
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-600 truncate">{lead.company || '—'}</p>
+                      {lead.category && <p className="text-xs text-gray-400 truncate">{lead.category}</p>}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    {[lead.city, lead.country].filter(Boolean).join(', ') || '—'}
+                  </td>
                   <td className="px-6 py-4">
                     <Badge variant={STATUS_BADGE_MAP[lead.status] || 'gray'}>
                       {lead.status}
                     </Badge>
                   </td>
                   <td className="px-6 py-4">
+                    {lead.icpFit ? (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        lead.icpFit === 'HIGH' ? 'bg-green-100 text-green-700' :
+                        lead.icpFit === 'MEDIUM' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>{lead.icpFit}</span>
+                    ) : <span className="text-gray-300 text-xs">—</span>}
+                  </td>
+                  <td className="px-6 py-4">
                     <span className={`text-sm ${scoreColor(lead.score ?? 0)}`}>
                       {lead.score ?? 0}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {lead.assignedTo ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="h-5 w-5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                          {lead.assignedTo.name.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="truncate max-w-[80px]">{lead.assignedTo.name}</span>
-                      </span>
-                    ) : (
-                      <span className="text-gray-300 dark:text-gray-600 text-xs">Unassigned</span>
-                    )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">{lead.source || '—'}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{formatRelativeTime(lead.createdAt)}</td>

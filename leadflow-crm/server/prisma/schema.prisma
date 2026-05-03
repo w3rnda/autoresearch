@@ -13,12 +13,13 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users      User[]
-  leads      Lead[]
-  sequences  EmailSequence[]
-  segments   Segment[]
-  pipelines  Pipeline[]
-  workspaces DealWorkspace[]
+  users         User[]
+  leads         Lead[]
+  sequences     EmailSequence[]
+  segments      Segment[]
+  pipelines     Pipeline[]
+  workspaces    DealWorkspace[]
+  gtmWorkspaces GtmWorkspace[]
 }
 
 model User {
@@ -59,6 +60,19 @@ model Lead {
   email           String
   phone           String?
   company         String?
+  title           String?    // Job title / position
+  website         String?    // Company or personal website
+  country         String?
+  city            String?
+  address         String?    // Full street address
+  linkedIn        String?    // LinkedIn profile URL
+  twitter         String?    // X / Twitter handle or URL
+  category        String?    // Business category (e.g. "Charter Operator")
+  industry        String?    // Industry vertical
+  companySize     String?    // e.g. "1-10", "51-200", "1000+"
+  icpFit          String?    // Ideal Customer Profile fit: HIGH / MEDIUM / LOW
+  notes           String?    // Free-text notes
+  customFields    Json?      // Catch-all JSON for any extra CSV / scraped data
   source          LeadSource @default(MANUAL)
   status          LeadStatus @default(COLD)
   score           Int        @default(0)
@@ -78,6 +92,7 @@ model Lead {
   emailEvents EmailEvent[]
   enrollments SequenceEnrollment[]
   workspace   DealWorkspace?
+  gtmEntities GtmEntity[]
 
   @@index([organizationId, status])
   @@index([organizationId, score])
@@ -93,6 +108,7 @@ enum LeadSource {
   COLD_OUTREACH
   SOCIAL_MEDIA
   EVENT
+  GTM_ENGINE
   OTHER
 }
 
@@ -407,4 +423,235 @@ enum PaymentStatus {
   PARTIAL
   PAID
   OVERDUE
+}
+
+// ─────────────────────────────────────────────────────────────
+// GTM Engine — AI-driven Go-To-Market sourcing & signals
+// ─────────────────────────────────────────────────────────────
+
+model GtmWorkspace {
+  id             String             @id @default(cuid())
+  name           String
+  description    String?            @db.Text
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         GtmWorkspaceStatus @default(DRAFT)
+
+  // ICP Definition
+  icpDefinition  Json?              // { industries: [], companySizes: [], geos: [], keywords: [], exclusions: [] }
+  icpNatural     String?            @db.Text  // Natural language ICP for AI query generation
+
+  // Sourcing Configuration
+  sourcingConfig Json?              // { sources: ["google_maps", "vibe"], queries: [], scheduleHours: 6 }
+
+  // Enrichment Configuration
+  enrichConfig   Json?              // { providers: ["website", "vibe", "social"], waterfallOrder: [...] }
+
+  // Scoring Configuration
+  scoringConfig  Json?              // { weights: { signals: 0.4, fit: 0.3, engagement: 0.3 }, thresholds: { hot: 70, warm: 40 } }
+
+  // Auto-enroll into sequence on promotion
+  autoSequenceId String?
+
+  // Pipeline to push promoted leads into
+  autoPipelineId String?
+
+  // Auto-promote threshold (leads with gtmScore >= threshold auto-promote)
+  autoPromoteThreshold Int?
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // Relations
+  sourcingRuns   SourcingRun[]
+  entities       GtmEntity[]
+  signals        Signal[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum GtmWorkspaceStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+// Raw entity from sourcing (staging before promotion to Lead)
+model GtmEntity {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  workspace      GtmWorkspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Identity (used for dedup)
+  name           String
+  email          String?
+  phone          String?
+  website        String?
+  domain         String?         // Extracted from website/email
+  placeId        String?         // Google Maps place_id
+
+  // Raw scraped data (full payload from source)
+  rawData        Json
+
+  // Enriched data (populated progressively by enrichment pipeline)
+  enrichedData   Json?           // { techStack: [], emails: [], socials: {}, revenue: ... }
+
+  // Metadata
+  source         GtmEntitySource
+  sourceRef      String?         // External reference ID (Apify run ID, etc.)
+  status         GtmEntityStatus @default(NEW)
+
+  // Link to Lead (populated when entity is promoted)
+  leadId         String?
+  lead           Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  // AI Scoring
+  gtmScore       Int             @default(0)   // 0-100 AI-computed score
+  scoreBreakdown Json?           // { fit: 40, signals: 30, reasons: [...] }
+  outreachAngles Json?           // AI-generated recommended outreach angles
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  // Relations
+  snapshots      EntitySnapshot[]
+  signals        Signal[]
+  enrichmentLogs EnrichmentLog[]
+
+  @@unique([workspaceId, placeId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, gtmScore])
+  @@index([domain])
+  @@index([placeId])
+  @@index([leadId])
+}
+
+enum GtmEntitySource {
+  GOOGLE_MAPS
+  VIBE_PROSPECTING
+  WEB_SCRAPE
+  CSV_IMPORT
+  API_IMPORT
+  MANUAL
+}
+
+enum GtmEntityStatus {
+  NEW
+  ENRICHING
+  ENRICHED
+  SCORED
+  PROMOTED
+  REJECTED
+  DUPLICATE
+}
+
+// Historical snapshots for signal computation
+model EntitySnapshot {
+  id         String    @id @default(cuid())
+  entityId   String
+  entity     GtmEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  data       Json      // { reviewCount: 45, rating: 4.2, employeeCount: 12 }
+  capturedAt DateTime  @default(now())
+
+  @@index([entityId, capturedAt])
+}
+
+// Detected intent signals
+model Signal {
+  id          String       @id @default(cuid())
+  entityId    String
+  entity      GtmEntity    @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   GtmWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  type        SignalType
+  strength    Int          @default(50)  // 0-100 signal strength
+
+  previousValue Json?
+  currentValue  Json?
+  delta         Json?      // { reviewCount: +15, percentChange: 37.5 }
+
+  description String?      // "Review count grew 37% in 30 days"
+
+  detectedAt  DateTime     @default(now())
+  expiresAt   DateTime?
+
+  @@index([entityId, type])
+  @@index([workspaceId, detectedAt])
+}
+
+enum SignalType {
+  REVIEW_GROWTH
+  RATING_CHANGE
+  NEW_LOCATION
+  HIRING_SIGNAL
+  TECH_ADOPTION
+  FUNDING_EVENT
+  WEBSITE_CHANGE
+  SOCIAL_GROWTH
+  CONTENT_PUBLISHED
+  CUSTOM
+}
+
+// Enrichment audit trail
+model EnrichmentLog {
+  id         String              @id @default(cuid())
+  entityId   String
+  entity     GtmEntity           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  provider   String              // "apify", "vibe", "scraper"
+  action     String              // "extract-emails", "detect-tech"
+  status     EnrichmentLogStatus @default(PENDING)
+
+  input      Json?
+  output     Json?
+  error      String?
+
+  durationMs Int?
+  creditCost Float?
+
+  createdAt  DateTime            @default(now())
+
+  @@index([entityId])
+  @@index([provider, status])
+}
+
+enum EnrichmentLogStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+// Sourcing run — tracks each execution of a sourcing job
+model SourcingRun {
+  id               String            @id @default(cuid())
+  workspaceId      String
+  workspace        GtmWorkspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  source           GtmEntitySource
+  query            String?
+  config           Json?
+
+  status           SourcingRunStatus  @default(RUNNING)
+
+  entitiesFound    Int               @default(0)
+  entitiesNew      Int               @default(0)
+  entitiesDuplicate Int              @default(0)
+
+  error            String?
+  startedAt        DateTime          @default(now())
+  completedAt      DateTime?
+
+  @@index([workspaceId, startedAt])
+}
+
+enum SourcingRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
 }

@@ -8,7 +8,7 @@ import { useEffect } from 'react'
 import {
   LayoutDashboard, Users, Kanban, Mail, Calendar, FileText,
   Bell, LogOut, Zap, Settings, Sun, Moon, ChevronRight,
-  TrendingUp, Layers,
+  TrendingUp, Layers, Rocket,
 } from 'lucide-react'
 import GlobalSearch from '../ui/GlobalSearch'
 
@@ -20,6 +20,12 @@ const NAV_SECTIONS = [
       { to: '/leads', icon: Users, label: 'Leads' },
       { to: '/pipeline', icon: Kanban, label: 'Pipeline' },
       { to: '/segments', icon: Layers, label: 'Segments' },
+    ],
+  },
+  {
+    label: 'GTM Engine',
+    items: [
+      { to: '/gtm', icon: Rocket, label: 'GTM Workspaces' },
     ],
   },
   {
