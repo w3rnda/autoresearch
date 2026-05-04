@@ -17,6 +17,9 @@ const {
   triggerSourcing,
   listSourcingRuns,
   ingestEntities,
+  scoreWorkspaceEntities,
+  scoreEntity,
+  findEntityEmails,
 } = require('../controllers/gtm-workspace.controller');
 
 const router = Router();
@@ -115,6 +118,38 @@ router.post(
   [param('id').notEmpty(), param('entityId').notEmpty()],
   validate,
   promoteEntity
+);
+
+// ─── AI Scoring ──────────────────────────────────────────────────────────────
+
+// POST   /gtm/workspaces/:id/score — score all ENRICHED/NEW entities
+router.post(
+  '/workspaces/:id/score',
+  [param('id').notEmpty(), body('autoPromote').optional().isBoolean()],
+  validate,
+  scoreWorkspaceEntities
+);
+
+// POST   /gtm/workspaces/:id/entities/:entityId/score — score single entity
+router.post(
+  '/workspaces/:id/entities/:entityId/score',
+  [
+    param('id').notEmpty(),
+    param('entityId').notEmpty(),
+    body('autoPromote').optional().isBoolean(),
+  ],
+  validate,
+  scoreEntity
+);
+
+// ─── Email Finder ────────────────────────────────────────────────────────────
+
+// POST   /gtm/workspaces/:id/entities/:entityId/find-emails — Hunter.io lookup
+router.post(
+  '/workspaces/:id/entities/:entityId/find-emails',
+  [param('id').notEmpty(), param('entityId').notEmpty()],
+  validate,
+  findEntityEmails
 );
 
 module.exports = router;

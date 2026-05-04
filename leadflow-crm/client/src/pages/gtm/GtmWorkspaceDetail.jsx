@@ -8,7 +8,7 @@ import Spinner from '../../components/ui/Spinner'
 import {
   ArrowLeft, Play, Search, Globe, Users, TrendingUp, Zap,
   CheckCircle, XCircle, Clock, Rocket, ExternalLink, Mail,
-  Phone, MapPin, Star, ChevronUp,
+  Phone, MapPin, Star, ChevronUp, Sparkles, Brain, AtSign,
 } from 'lucide-react'
 
 const STATUS_COLORS = {
@@ -69,6 +69,33 @@ export default function GtmWorkspaceDetail() {
     },
   })
 
+  const scoreAllMutation = useMutation({
+    mutationFn: (autoPromote) => gtmApi.scoreWorkspace(workspaceId, { autoPromote }),
+    onSuccess: () => {
+      // Poll for score updates
+      setTimeout(() => {
+        queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
+        queryClient.refetchQueries({ queryKey: ['gtm-workspace', workspaceId] })
+      }, 3000)
+    },
+  })
+
+  const scoreEntityMutation = useMutation({
+    mutationFn: (entityId) => gtmApi.scoreEntity(workspaceId, entityId, { autoPromote: false }),
+    onSuccess: () => {
+      setTimeout(() => {
+        queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
+      }, 2000)
+    },
+  })
+
+  const findEmailsMutation = useMutation({
+    mutationFn: (entityId) => gtmApi.findEntityEmails(workspaceId, entityId),
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
+    },
+  })
+
   if (wsLoading) {
     return <div className="flex items-center justify-center h-64"><Spinner size="lg" /></div>
   }
@@ -101,13 +128,31 @@ export default function GtmWorkspaceDetail() {
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-2xl">{wsData.icpNatural}</p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           {wsData.status === 'DRAFT' && (
             <Button
               onClick={() => activateMutation.mutate()}
               loading={activateMutation.isPending}
             >
               <Play className="h-4 w-4" /> Activate
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            onClick={() => scoreAllMutation.mutate(false)}
+            loading={scoreAllMutation.isPending}
+            title="Run Claude AI scoring on all entities in this workspace"
+          >
+            <Brain className="h-4 w-4" /> Score with AI
+          </Button>
+          {wsData.autoPromoteThreshold > 0 && (
+            <Button
+              variant="success"
+              onClick={() => scoreAllMutation.mutate(true)}
+              loading={scoreAllMutation.isPending}
+              title={`Score and auto-promote entities scoring >= ${wsData.autoPromoteThreshold}`}
+            >
+              <Sparkles className="h-4 w-4" /> Score + Auto-Promote
             </Button>
           )}
           <Button variant="secondary" onClick={() => setShowSourcing(true)}>
@@ -205,7 +250,11 @@ export default function GtmWorkspaceDetail() {
                     key={entity.id}
                     entity={entity}
                     onPromote={() => promoteMutation.mutate(entity.id)}
+                    onScore={() => scoreEntityMutation.mutate(entity.id)}
+                    onFindEmails={() => findEmailsMutation.mutate(entity.id)}
                     promoting={promoteMutation.isPending}
+                    scoring={scoreEntityMutation.isPending}
+                    findingEmails={findEmailsMutation.isPending}
                   />
                 ))}
               </tbody>
@@ -225,66 +274,139 @@ export default function GtmWorkspaceDetail() {
   )
 }
 
-function EntityRow({ entity, onPromote, promoting }) {
+function EntityRow({ entity, onPromote, onScore, onFindEmails, promoting, scoring, findingEmails }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasOutreach = entity.outreachAngles && entity.outreachAngles.length > 0
+  const hasBreakdown = entity.scoreBreakdown && Object.keys(entity.scoreBreakdown).length > 0
+  const isScored = entity.status === 'SCORED' || entity.gtmScore > 0
+
   return (
-    <tr className="hover:bg-gray-50 dark:hover:bg-gray-900/30 group">
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 flex items-center justify-center flex-shrink-0">
-            <Globe className="h-4 w-4 text-indigo-500" />
+    <>
+      <tr className="hover:bg-gray-50 dark:hover:bg-gray-900/30 group">
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => (hasOutreach || hasBreakdown) && setExpanded(!expanded)}
+              className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+                (hasOutreach || hasBreakdown)
+                  ? 'bg-gradient-to-br from-purple-100 to-indigo-100 dark:from-purple-900/40 dark:to-indigo-900/40 hover:scale-110'
+                  : 'bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40'
+              }`}
+              title={(hasOutreach || hasBreakdown) ? 'Click to view AI insights' : entity.name}
+            >
+              {(hasOutreach || hasBreakdown) ? <Sparkles className="h-4 w-4 text-purple-500" /> : <Globe className="h-4 w-4 text-indigo-500" />}
+            </button>
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900 dark:text-white truncate text-sm">{entity.name}</p>
+              {entity.domain && (
+                <p className="text-[11px] text-gray-400 truncate">{entity.domain}</p>
+              )}
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="font-medium text-gray-900 dark:text-white truncate text-sm">{entity.name}</p>
-            {entity.domain && (
-              <p className="text-[11px] text-gray-400 truncate">{entity.domain}</p>
+        </td>
+        <td className="px-4 py-3">
+          <div className="space-y-0.5">
+            {entity.email && (
+              <p className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                <Mail className="h-3 w-3 text-gray-400" /> {entity.email}
+              </p>
+            )}
+            {entity.phone && (
+              <p className="text-xs text-gray-500 flex items-center gap-1">
+                <Phone className="h-3 w-3 text-gray-400" /> {entity.phone}
+              </p>
+            )}
+            {!entity.email && !entity.phone && (
+              <p className="text-xs text-gray-400 italic">No contact info</p>
             )}
           </div>
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="space-y-0.5">
-          {entity.email && (
-            <p className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
-              <Mail className="h-3 w-3 text-gray-400" /> {entity.email}
-            </p>
-          )}
-          {entity.phone && (
-            <p className="text-xs text-gray-500 flex items-center gap-1">
-              <Phone className="h-3 w-3 text-gray-400" /> {entity.phone}
-            </p>
-          )}
-          {!entity.email && !entity.phone && (
-            <p className="text-xs text-gray-400 italic">No contact info</p>
-          )}
-        </div>
-      </td>
-      <td className="px-4 py-3 text-center">
-        <ScoreBadge score={entity.gtmScore} />
-      </td>
-      <td className="px-4 py-3 text-center">
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{entity._count?.signals || 0}</span>
-      </td>
-      <td className="px-4 py-3">
-        <Badge variant={STATUS_COLORS[entity.status] || 'gray'} size="sm">{entity.status}</Badge>
-      </td>
-      <td className="px-4 py-3 text-right">
-        {entity.status !== 'PROMOTED' && (
-          <Button
-            variant="success"
-            size="xs"
-            onClick={onPromote}
-            loading={promoting}
-          >
-            <ChevronUp className="h-3 w-3" /> Promote
-          </Button>
-        )}
-        {entity.status === 'PROMOTED' && (
-          <span className="text-xs text-green-600 font-medium flex items-center gap-1 justify-end">
-            <CheckCircle className="h-3.5 w-3.5" /> Lead
-          </span>
-        )}
-      </td>
-    </tr>
+        </td>
+        <td className="px-4 py-3 text-center">
+          <ScoreBadge score={entity.gtmScore} />
+        </td>
+        <td className="px-4 py-3 text-center">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{entity._count?.signals || 0}</span>
+        </td>
+        <td className="px-4 py-3">
+          <Badge variant={STATUS_COLORS[entity.status] || 'gray'} size="sm">{entity.status}</Badge>
+        </td>
+        <td className="px-4 py-3 text-right">
+          <div className="flex items-center gap-1 justify-end">
+            {!isScored && (
+              <Button
+                variant="secondary"
+                size="xs"
+                onClick={onScore}
+                loading={scoring}
+                title="Run AI scoring on this entity"
+              >
+                <Brain className="h-3 w-3" /> Score
+              </Button>
+            )}
+            {entity.domain && !entity.email?.includes('@') && (
+              <Button
+                variant="secondary"
+                size="xs"
+                onClick={onFindEmails}
+                loading={findingEmails}
+                title="Find decision-maker emails (Hunter.io)"
+              >
+                <AtSign className="h-3 w-3" /> Find Emails
+              </Button>
+            )}
+            {entity.status !== 'PROMOTED' && (
+              <Button
+                variant="success"
+                size="xs"
+                onClick={onPromote}
+                loading={promoting}
+              >
+                <ChevronUp className="h-3 w-3" /> Promote
+              </Button>
+            )}
+            {entity.status === 'PROMOTED' && (
+              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                <CheckCircle className="h-3.5 w-3.5" /> Lead
+              </span>
+            )}
+          </div>
+        </td>
+      </tr>
+      {expanded && (hasOutreach || hasBreakdown) && (
+        <tr className="bg-purple-50/40 dark:bg-purple-900/10">
+          <td colSpan={6} className="px-6 py-4">
+            <div className="space-y-3 max-w-3xl">
+              {hasBreakdown && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">AI Score Breakdown</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {Object.entries(entity.scoreBreakdown).map(([k, v]) => (
+                      <div key={k} className="bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-gray-200 dark:border-gray-700">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">{k}</p>
+                        <p className="text-base font-bold text-gray-900 dark:text-white">{v}<span className="text-xs text-gray-400 font-normal">/100</span></p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {hasOutreach && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Recommended Outreach Angles</p>
+                  <ul className="space-y-1">
+                    {entity.outreachAngles.map((angle, i) => (
+                      <li key={i} className="text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-gray-200 dark:border-gray-700">
+                        <Sparkles className="h-3.5 w-3.5 text-purple-500 mt-0.5 flex-shrink-0" />
+                        <span>{angle}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 

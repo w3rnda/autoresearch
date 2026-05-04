@@ -48,6 +48,9 @@ services:
       REDIS_PORT: 6379
       ENABLE_GTM_WORKERS: 'true'
       APIFY_API_TOKEN: ${APIFY_API_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUNTER_API_KEY: ${HUNTER_API_KEY:-}
+      SCORING_MODEL: ${SCORING_MODEL:-claude-haiku-4-5}
       JWT_SECRET: super-secret-jwt-key-for-development
       JWT_REFRESH_SECRET: super-secret-refresh-key-for-development
       JWT_EXPIRES_IN: 15m

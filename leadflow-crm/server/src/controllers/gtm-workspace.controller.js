@@ -2,8 +2,9 @@
 
 const prisma = require('../prisma');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response.utils');
-const { sourcingQueue } = require('../queues');
+const { sourcingQueue, scoringQueue } = require('../queues');
 const { deduplicateAndInsert } = require('../services/gtm/dedup.service');
+const { findEmailsForDomain } = require('../services/providers/hunter.provider');
 
 // ─── List GTM Workspaces ─────────────────────────────────────────────────────
 
@@ -556,6 +557,157 @@ const ingestEntities = async (req, res, next) => {
   }
 };
 
+// ─── AI Scoring ──────────────────────────────────────────────────────────────
+
+/**
+ * POST /gtm/workspaces/:id/score
+ * Trigger Claude AI scoring for all ENRICHED/NEW entities in a workspace.
+ * Optional: { autoPromote: true } to auto-create Leads above threshold.
+ */
+const scoreWorkspaceEntities = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { organizationId } = req.user;
+    const { autoPromote = false } = req.body;
+
+    const workspace = await prisma.gtmWorkspace.findFirst({
+      where: { id, organizationId },
+    });
+    if (!workspace) {
+      return res.status(404).json(errorResponse('GTM workspace not found'));
+    }
+
+    if (autoPromote && !workspace.autoPromoteThreshold) {
+      return res.status(400).json(errorResponse(
+        'Cannot auto-promote without autoPromoteThreshold set on workspace'
+      ));
+    }
+
+    await scoringQueue.add(
+      'score-batch',
+      { workspaceId: id, autoPromote },
+      { jobId: `score-batch-${id}-${Date.now()}` }
+    );
+
+    return res.status(202).json(successResponse(
+      { workspaceId: id, autoPromote },
+      'Scoring batch job queued'
+    ));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /gtm/workspaces/:id/entities/:entityId/score
+ * Score a single entity (sync or via queue).
+ */
+const scoreEntity = async (req, res, next) => {
+  try {
+    const { id, entityId } = req.params;
+    const { organizationId } = req.user;
+    const { autoPromote = false } = req.body;
+
+    const workspace = await prisma.gtmWorkspace.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!workspace) {
+      return res.status(404).json(errorResponse('GTM workspace not found'));
+    }
+
+    const entity = await prisma.gtmEntity.findFirst({
+      where: { id: entityId, workspaceId: id },
+      select: { id: true },
+    });
+    if (!entity) {
+      return res.status(404).json(errorResponse('Entity not found'));
+    }
+
+    const jobName = autoPromote ? 'score-and-promote' : 'score-entity';
+    await scoringQueue.add(
+      jobName,
+      { workspaceId: id, entityId, autoPromote },
+      { jobId: `score-${entityId}-${Date.now()}` }
+    );
+
+    return res.status(202).json(successResponse(
+      { entityId, queued: true },
+      'Scoring job queued'
+    ));
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Email Finder ────────────────────────────────────────────────────────────
+
+/**
+ * POST /gtm/workspaces/:id/entities/:entityId/find-emails
+ * Use Hunter.io (or pattern fallback) to find decision-maker emails for entity domain.
+ */
+const findEntityEmails = async (req, res, next) => {
+  try {
+    const { id, entityId } = req.params;
+    const { organizationId } = req.user;
+
+    const workspace = await prisma.gtmWorkspace.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!workspace) {
+      return res.status(404).json(errorResponse('GTM workspace not found'));
+    }
+
+    const entity = await prisma.gtmEntity.findFirst({
+      where: { id: entityId, workspaceId: id },
+    });
+    if (!entity) {
+      return res.status(404).json(errorResponse('Entity not found'));
+    }
+
+    if (!entity.domain) {
+      return res.status(400).json(errorResponse('Entity has no domain to search'));
+    }
+
+    const result = await findEmailsForDomain(entity.domain);
+
+    // Persist top email back to the entity if not set
+    if (!entity.email && result.emails && result.emails.length > 0) {
+      const topEmail = result.emails[0].value;
+      await prisma.gtmEntity.update({
+        where: { id: entityId },
+        data: {
+          email: topEmail,
+          enrichedData: {
+            ...(entity.enrichedData || {}),
+            hunterEmails: result.emails,
+            hunterPattern: result.pattern,
+          },
+        },
+      });
+    }
+
+    // Log the enrichment
+    await prisma.enrichmentLog.create({
+      data: {
+        entityId,
+        provider: result.provider,
+        action: 'find-emails',
+        status: result.error ? 'FAILED' : 'SUCCESS',
+        output: { emails: result.emails, pattern: result.pattern },
+        error: result.error || null,
+        durationMs: result.durationMs || 0,
+        creditCost: result.creditCost || 0,
+      },
+    });
+
+    return res.json(successResponse(result, 'Email search complete'));
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   listWorkspaces,
   getWorkspace,
@@ -569,4 +721,7 @@ module.exports = {
   triggerSourcing,
   listSourcingRuns,
   ingestEntities,
+  scoreWorkspaceEntities,
+  scoreEntity,
+  findEntityEmails,
 };

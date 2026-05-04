@@ -18,4 +18,13 @@ export const gtmApi = {
   listEntities: (workspaceId, params) => apiClient.get(`/gtm/workspaces/${workspaceId}/entities`, { params }),
   getEntity: (workspaceId, entityId) => apiClient.get(`/gtm/workspaces/${workspaceId}/entities/${entityId}`),
   promoteEntity: (workspaceId, entityId) => apiClient.post(`/gtm/workspaces/${workspaceId}/entities/${entityId}/promote`),
+
+  // AI Scoring (Claude API)
+  scoreWorkspace: (id, data = {}) => apiClient.post(`/gtm/workspaces/${id}/score`, data),
+  scoreEntity: (workspaceId, entityId, data = {}) =>
+    apiClient.post(`/gtm/workspaces/${workspaceId}/entities/${entityId}/score`, data),
+
+  // Email finder (Hunter.io with pattern fallback)
+  findEntityEmails: (workspaceId, entityId) =>
+    apiClient.post(`/gtm/workspaces/${workspaceId}/entities/${entityId}/find-emails`),
 }

@@ -88,6 +88,27 @@ async function processBatchEnrichment(workspaceId, sourcingRunId, job) {
   }
 
   job.log(`Batch enrichment complete: ${enriched} enriched, ${failed} failed`);
+
+  // Pipeline chain: auto-queue scoring after enrichment if enabled
+  if (enriched > 0 && process.env.AUTO_SCORE_AFTER_ENRICH !== 'false') {
+    try {
+      const { scoringQueue } = require('../queues');
+      const workspace = await prisma.gtmWorkspace.findUnique({
+        where: { id: workspaceId },
+        select: { autoPromoteThreshold: true },
+      });
+      const autoPromote = !!workspace?.autoPromoteThreshold;
+      await scoringQueue.add(
+        'score-batch',
+        { workspaceId, autoPromote },
+        { jobId: `auto-score-${workspaceId}-${Date.now()}`, delay: 1000 }
+      );
+      job.log(`Queued auto-scoring (autoPromote=${autoPromote})`);
+    } catch (err) {
+      job.log(`Failed to queue auto-scoring: ${err.message}`);
+    }
+  }
+
   return { enriched, failed, total: entities.length };
 }
 

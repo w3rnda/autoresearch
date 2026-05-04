@@ -28,12 +28,15 @@ A self-hosted, AI-powered Go-To-Market platform that combines a full-featured CR
 
 ## ✨ What's Inside
 
-### 🎯 GTM Engine (NEW)
+### 🎯 GTM Engine
 - **Multi-source sourcing** — Apify Google Maps integration, MCP-native, extensible to LinkedIn, Crunchbase, BuiltWith
 - **3-strategy deduplication** — `placeId` → `domain` → `name+city` fuzzy match (100% accuracy verified)
 - **Waterfall enrichment** — Progressive fill from rawData → domain → contact extraction → AI inference
+- **🧠 Claude AI scoring** — Structured 0-100 scoring with reasons + personalized outreach angles
+- **📧 Hunter.io email finder** — Domain → real decision-maker emails (or pattern fallback)
 - **ICP-based workspaces** — Define ideal customers in natural language, multiple workspaces per organization
 - **Auto-promotion to leads** — Threshold-based promotion with sequence auto-enrollment
+- **Pipeline chaining** — Sourcing → enrichment → scoring → promotion all auto-queued
 - **Full audit trail** — `SourcingRun`, `EnrichmentLog`, `EntitySnapshot`, `Signal` models
 - **Background workers** — BullMQ + Redis with retry, backoff, rate limiting
 
@@ -265,18 +268,22 @@ leadflow-crm/
 │       │   └── gtm.routes.js                 # NEW
 │       ├── services/
 │       │   ├── gtm/
-│       │   │   └── dedup.service.js          # NEW — 3-strategy dedup
+│       │   │   ├── dedup.service.js          # 3-strategy dedup
+│       │   │   └── scoring.service.js        # NEW — Claude AI scoring
 │       │   └── providers/
-│       │       └── apify.provider.js         # NEW — Google Maps scraper
+│       │       ├── apify.provider.js         # Google Maps scraper
+│       │       └── hunter.provider.js        # NEW — email finder
 │       ├── queues/
-│       │   ├── connection.js                 # NEW — BullMQ + Redis
-│       │   ├── sourcing.queue.js             # NEW
-│       │   ├── enrichment.queue.js           # NEW
+│       │   ├── connection.js                 # BullMQ + Redis
+│       │   ├── sourcing.queue.js
+│       │   ├── enrichment.queue.js
+│       │   ├── scoring.queue.js              # NEW
 │       │   └── index.js
 │       ├── workers/
 │       │   ├── email.worker.js
-│       │   ├── sourcing.worker.js            # NEW — Apify orchestration
-│       │   └── enrichment.worker.js          # NEW — waterfall pipeline
+│       │   ├── sourcing.worker.js            # Apify orchestration
+│       │   ├── enrichment.worker.js          # waterfall + auto-score
+│       │   └── scoring.worker.js             # NEW — Claude scoring + auto-promote
 │       └── server.js
 ├── tests/                               # NEW — Playwright E2E
 │   └── gtm-engine.spec.js
@@ -309,6 +316,9 @@ All endpoints require `Authorization: Bearer <token>`.
 | `GET`  | `/workspaces/:id/entities` | List entities with filters |
 | `GET`  | `/workspaces/:id/entities/:entityId` | Entity detail with logs/signals |
 | `POST` | `/workspaces/:id/entities/:entityId/promote` | Promote entity → Lead |
+| `POST` | `/workspaces/:id/score` | **NEW** — AI-score all entities (Claude or heuristic) |
+| `POST` | `/workspaces/:id/entities/:entityId/score` | **NEW** — Score a single entity |
+| `POST` | `/workspaces/:id/entities/:entityId/find-emails` | **NEW** — Hunter.io email finder |
 
 ### CRM Endpoints
 
@@ -390,18 +400,20 @@ Estimated time-to-live: **~2 hours** for first deploy with all services connecte
 - Workers for sourcing/enrichment
 - CRM integration (entity → lead promotion)
 
-### 🚧 Phase 2 — AI Layer (Next)
-- **Claude API scoring** — 0-100 score with reasons + outreach angles
-- **Hunter.io email finder** — domain → real decision-maker email
-- **Daily snapshots** — track review velocity, hiring signals
-- **Auto-promotion** — threshold-based with sequence enrollment
+### ✅ Phase 2 — AI Layer (Done)
+- **Claude API scoring** — Structured 0-100 score with reasons + outreach angles via `@anthropic-ai/sdk`
+- **Hunter.io email finder** — Domain → real decision-maker emails with seniority sorting
+- **Auto-promotion** — Threshold-based promotion to CRM Leads
+- **Pipeline chaining** — Sourcing → enrichment → scoring → promotion all auto-queued
+- **Heuristic fallback** — Works without API keys (rule-based scoring + pattern email guessing)
 
-### 🔮 Phase 3 — Intent & Expansion
+### 🔮 Phase 3 — Intent & Signals (Next)
+- **Daily snapshots** — Track review velocity, rating changes, content publishing cadence
+- **Signal detection** — Fire alerts on review growth, hiring spikes, tech stack changes
 - LinkedIn job post scraper (hiring signals)
 - BuiltWith tech stack detection
 - G2/Bombora intent data
 - Lookalike search ("find more like my best customer")
-- AI-powered outreach generation per entity
 
 ### 💼 Phase 4 — Enterprise
 - Multi-channel sequences (email + LinkedIn + SMS)
