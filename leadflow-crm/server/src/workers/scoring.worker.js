@@ -78,10 +78,12 @@ async function processSingle(entityId, autoPromote, job) {
 }
 
 async function processBatch(workspaceId, autoPromote, job) {
+  // Include SCORED entities so re-scoring + auto-promote-after-the-fact both work.
+  // PROMOTED entities are excluded — they're already CRM leads.
   const entities = await prisma.gtmEntity.findMany({
     where: {
       workspaceId,
-      status: { in: ['ENRICHED', 'NEW'] },
+      status: { in: ['ENRICHED', 'NEW', 'SCORED'] },
     },
     select: { id: true },
   });
