@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { gtmApi } from '../../api/gtm.api'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
@@ -29,7 +30,11 @@ export default function GtmDashboard() {
 
   const deleteMutation = useMutation({
     mutationFn: (id) => gtmApi.deleteWorkspace(id),
-    onSuccess: () => queryClient.refetchQueries({ queryKey: ['gtm-workspaces'] }),
+    onSuccess: () => {
+      toast.success('Workspace deleted')
+      queryClient.refetchQueries({ queryKey: ['gtm-workspaces'] })
+    },
+    onError: (err) => toast.error(err.response?.data?.error || 'Failed to delete workspace'),
   })
 
   const workspaces = data?.data || []
@@ -114,7 +119,12 @@ export default function GtmDashboard() {
               </span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(ws.id) }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (window.confirm(`Delete workspace "${ws.name}"? This removes all its entities and signals.`)) {
+                      deleteMutation.mutate(ws.id)
+                    }
+                  }}
                   className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   title="Delete workspace"
                 >
@@ -167,9 +177,12 @@ function CreateWorkspaceModal({ onClose }) {
       })
 
       queryClient.refetchQueries({ queryKey: ['gtm-workspaces'] })
+      toast.success('Workspace created')
       onClose()
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create workspace')
+      const msg = err.response?.data?.error || 'Failed to create workspace'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }

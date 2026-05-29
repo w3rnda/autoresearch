@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { gtmApi } from '../../api/gtm.api'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
@@ -71,43 +72,57 @@ export default function GtmWorkspaceDetail() {
   const activateMutation = useMutation({
     mutationFn: () => gtmApi.activateWorkspace(workspaceId),
     onSuccess: () => {
+      toast.success('Workspace activated — sourcing queued')
       queryClient.refetchQueries({ queryKey: ['gtm-workspace', workspaceId] })
       queryClient.refetchQueries({ queryKey: ['gtm-runs', workspaceId] })
     },
+    onError: (err) => toast.error(err.response?.data?.error || 'Failed to activate workspace'),
   })
 
   const promoteMutation = useMutation({
     mutationFn: (entityId) => gtmApi.promoteEntity(workspaceId, entityId),
     onSuccess: () => {
+      toast.success('Promoted to a CRM lead')
       queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
+      queryClient.refetchQueries({ queryKey: ['gtm-workspace', workspaceId] })
     },
+    onError: (err) => toast.error(err.response?.data?.error || 'Failed to promote entity'),
   })
 
   const scoreAllMutation = useMutation({
     mutationFn: (autoPromote) => gtmApi.scoreWorkspace(workspaceId, { autoPromote }),
-    onSuccess: () => {
+    onSuccess: (_res, autoPromote) => {
+      toast.success(autoPromote
+        ? 'Scoring + auto-promote queued — refreshing shortly'
+        : 'AI scoring queued — scores will appear shortly')
       // Poll for score updates
       setTimeout(() => {
         queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
         queryClient.refetchQueries({ queryKey: ['gtm-workspace', workspaceId] })
       }, 3000)
     },
+    onError: (err) => toast.error(err.response?.data?.error || 'Failed to start scoring'),
   })
 
   const scoreEntityMutation = useMutation({
     mutationFn: (entityId) => gtmApi.scoreEntity(workspaceId, entityId, { autoPromote: false }),
     onSuccess: () => {
+      toast.success('Scoring queued for entity')
       setTimeout(() => {
         queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
       }, 2000)
     },
+    onError: (err) => toast.error(err.response?.data?.error || 'Failed to score entity'),
   })
 
   const findEmailsMutation = useMutation({
     mutationFn: (entityId) => gtmApi.findEntityEmails(workspaceId, entityId),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const n = res?.data?.data?.emails?.length || 0
+      toast.success(n > 0 ? `Found ${n} email(s)` : 'Email search complete')
       queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
     },
+    onError: (err) => toast.error(err.response?.data?.error || 'Email search failed'),
   })
 
   // ── Signal Engine ──────────────────────────────────────────────────────
@@ -120,21 +135,25 @@ export default function GtmWorkspaceDetail() {
   const detectSignalsMutation = useMutation({
     mutationFn: () => gtmApi.detectSignals(workspaceId),
     onSuccess: () => {
+      toast.success('Snapshot + signal detection queued')
       setTimeout(() => {
         queryClient.refetchQueries({ queryKey: ['gtm-signals', workspaceId] })
         queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
       }, 4000)
     },
+    onError: (err) => toast.error(err.response?.data?.error || 'Failed to detect signals'),
   })
 
   const scanMutation = useMutation({
     mutationFn: () => gtmApi.scanWorkspace(workspaceId),
     onSuccess: () => {
+      toast.success('Full scan queued — re-sourcing + detecting signals')
       setTimeout(() => {
         queryClient.refetchQueries({ queryKey: ['gtm-signals', workspaceId] })
         queryClient.refetchQueries({ queryKey: ['gtm-runs', workspaceId] })
       }, 4000)
     },
+    onError: (err) => toast.error(err.response?.data?.error || 'Failed to start scan'),
   })
 
   const [outreachModal, setOutreachModal] = useState(null) // entity object or null
