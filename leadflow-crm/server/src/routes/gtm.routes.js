@@ -20,6 +20,10 @@ const {
   scoreWorkspaceEntities,
   scoreEntity,
   findEntityEmails,
+  scanWorkspace,
+  detectWorkspaceSignals,
+  listSignals,
+  generateEntityOutreach,
 } = require('../controllers/gtm-workspace.controller');
 
 const router = Router();
@@ -150,6 +154,40 @@ router.post(
   [param('id').notEmpty(), param('entityId').notEmpty()],
   validate,
   findEntityEmails
+);
+
+// ─── Signal Engine ───────────────────────────────────────────────────────────
+
+// POST   /gtm/workspaces/:id/scan — full periodic scan (re-source + snapshot + detect)
+router.post(
+  '/workspaces/:id/scan',
+  [param('id').notEmpty()],
+  validate,
+  scanWorkspace
+);
+
+// POST   /gtm/workspaces/:id/detect-signals — snapshot + detect (no re-source)
+router.post(
+  '/workspaces/:id/detect-signals',
+  [param('id').notEmpty()],
+  validate,
+  detectWorkspaceSignals
+);
+
+// GET    /gtm/workspaces/:id/signals — list detected intent signals
+router.get(
+  '/workspaces/:id/signals',
+  [param('id').notEmpty()],
+  validate,
+  listSignals
+);
+
+// POST   /gtm/workspaces/:id/entities/:entityId/outreach — signal-driven outreach copy
+router.post(
+  '/workspaces/:id/entities/:entityId/outreach',
+  [param('id').notEmpty(), param('entityId').notEmpty()],
+  validate,
+  generateEntityOutreach
 );
 
 module.exports = router;

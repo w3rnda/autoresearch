@@ -9,7 +9,21 @@ import {
   ArrowLeft, Play, Search, Globe, Users, TrendingUp, Zap,
   CheckCircle, XCircle, Clock, Rocket, ExternalLink, Mail,
   Phone, MapPin, Star, ChevronUp, Sparkles, Brain, AtSign,
+  Radar, Send, Activity, Flame,
 } from 'lucide-react'
+
+const SIGNAL_LABELS = {
+  REVIEW_GROWTH: 'Review Growth',
+  RATING_CHANGE: 'Rating Change',
+  NEW_LOCATION: 'New Location',
+  HIRING_SIGNAL: 'Hiring',
+  TECH_ADOPTION: 'Tech Adoption',
+  FUNDING_EVENT: 'Funding',
+  WEBSITE_CHANGE: 'New Website',
+  SOCIAL_GROWTH: 'Social Growth',
+  CONTENT_PUBLISHED: 'New Content',
+  CUSTOM: 'Signal',
+}
 
 const STATUS_COLORS = {
   NEW: 'blue',
@@ -96,6 +110,35 @@ export default function GtmWorkspaceDetail() {
     },
   })
 
+  // ── Signal Engine ──────────────────────────────────────────────────────
+  const { data: signalsData } = useQuery({
+    queryKey: ['gtm-signals', workspaceId],
+    queryFn: () => gtmApi.listSignals(workspaceId, { limit: 50 }).then(r => r.data),
+    refetchInterval: 15000,
+  })
+
+  const detectSignalsMutation = useMutation({
+    mutationFn: () => gtmApi.detectSignals(workspaceId),
+    onSuccess: () => {
+      setTimeout(() => {
+        queryClient.refetchQueries({ queryKey: ['gtm-signals', workspaceId] })
+        queryClient.refetchQueries({ queryKey: ['gtm-entities', workspaceId] })
+      }, 4000)
+    },
+  })
+
+  const scanMutation = useMutation({
+    mutationFn: () => gtmApi.scanWorkspace(workspaceId),
+    onSuccess: () => {
+      setTimeout(() => {
+        queryClient.refetchQueries({ queryKey: ['gtm-signals', workspaceId] })
+        queryClient.refetchQueries({ queryKey: ['gtm-runs', workspaceId] })
+      }, 4000)
+    },
+  })
+
+  const [outreachModal, setOutreachModal] = useState(null) // entity object or null
+
   if (wsLoading) {
     return <div className="flex items-center justify-center h-64"><Spinner size="lg" /></div>
   }
@@ -106,6 +149,7 @@ export default function GtmWorkspaceDetail() {
 
   const entities = entitiesData?.data || []
   const runs = runsData?.data || []
+  const signals = signalsData?.data || []
   const statusBreakdown = wsData.entityStatusBreakdown || {}
 
   return (
@@ -155,6 +199,22 @@ export default function GtmWorkspaceDetail() {
               <Sparkles className="h-4 w-4" /> Score + Auto-Promote
             </Button>
           )}
+          <Button
+            variant="primary"
+            onClick={() => detectSignalsMutation.mutate()}
+            loading={detectSignalsMutation.isPending}
+            title="Snapshot entities and detect intent signals (review growth, new website, etc.)"
+          >
+            <Radar className="h-4 w-4" /> Detect Signals
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => scanMutation.mutate()}
+            loading={scanMutation.isPending}
+            title="Full periodic scan: re-source fresh data + snapshot + detect signals"
+          >
+            <Activity className="h-4 w-4" /> Run Scan
+          </Button>
           <Button variant="secondary" onClick={() => setShowSourcing(true)}>
             <Search className="h-4 w-4" /> Run Search
           </Button>
@@ -169,6 +229,62 @@ export default function GtmWorkspaceDetail() {
         <StatCard label="Promoted" value={statusBreakdown.PROMOTED || 0} icon={CheckCircle} color="green" />
         <StatCard label="Signals" value={wsData._count?.signals || 0} icon={TrendingUp} color="amber" />
       </div>
+
+      {/* Intent Signals — hot leads showing buying behaviour */}
+      {signals.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide flex items-center gap-2">
+            <Flame className="h-4 w-4 text-orange-500" /> Intent Signals
+            <span className="text-xs font-normal text-gray-400 normal-case">— businesses actively growing &amp; investing</span>
+          </h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-orange-200 dark:border-orange-900/40 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-orange-50/60 dark:bg-orange-900/10">
+                <tr>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Business</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Signal</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">What Happened</th>
+                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Strength</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {signals.slice(0, 15).map((sig) => (
+                  <tr key={sig.id} className="hover:bg-orange-50/40 dark:hover:bg-orange-900/10">
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-gray-900 dark:text-white truncate max-w-[180px]">{sig.entity?.name || '-'}</p>
+                      {sig.entity?.gtmScore > 0 && (
+                        <p className="text-[11px] text-gray-400">score {sig.entity.gtmScore}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Badge variant="warning">{SIGNAL_LABELS[sig.type] || sig.type}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-600 dark:text-gray-300 text-xs max-w-[320px]">{sig.description}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold text-orange-700 bg-orange-100 dark:bg-orange-900/30 dark:text-orange-300">
+                        {sig.strength}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {sig.entity && (
+                        <Button
+                          variant="primary"
+                          size="xs"
+                          onClick={() => setOutreachModal(sig.entity)}
+                          title="Generate signal-driven outreach"
+                        >
+                          <Send className="h-3 w-3" /> Outreach
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Sourcing Runs */}
       {runs.length > 0 && (
@@ -270,6 +386,119 @@ export default function GtmWorkspaceDetail() {
           onClose={() => setShowSourcing(false)}
         />
       )}
+
+      {/* Outreach modal */}
+      {outreachModal && (
+        <OutreachModal
+          workspaceId={workspaceId}
+          entity={outreachModal}
+          onClose={() => setOutreachModal(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function OutreachModal({ workspaceId, entity, onClose }) {
+  const [channel, setChannel] = useState('email')
+  const [senderOffer, setSenderOffer] = useState('marketing and customer-response services')
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  async function handleGenerate() {
+    setLoading(true)
+    setError('')
+    setResult(null)
+    try {
+      const res = await gtmApi.generateOutreach(workspaceId, entity.id, { channel, senderOffer })
+      setResult(res.data.data)
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to generate outreach')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function copyToClipboard() {
+    const text = result?.subject ? `Subject: ${result.subject}\n\n${result.body}` : result?.body
+    navigator.clipboard?.writeText(text || '')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Send className="h-4 w-4 text-indigo-500" /> Signal-Driven Outreach
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><XCircle className="h-5 w-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">{entity.name}</p>
+            {entity.domain && <p className="text-xs text-gray-400">{entity.domain}</p>}
+          </div>
+
+          <div className="flex gap-2">
+            {['email', 'sms'].map((ch) => (
+              <button
+                key={ch}
+                onClick={() => setChannel(ch)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  channel === ch
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300'
+                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                {ch.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">What you offer</label>
+            <input
+              type="text"
+              value={senderOffer}
+              onChange={(e) => setSenderOffer(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              placeholder="e.g. SEO services, POS systems, insurance..."
+            />
+          </div>
+
+          <Button onClick={handleGenerate} loading={loading} className="w-full justify-center">
+            <Sparkles className="h-4 w-4" /> Generate Outreach
+          </Button>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
+
+          {result && (
+            <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 space-y-2 border border-gray-200 dark:border-gray-700">
+              {result.subject && (
+                <p className="text-sm"><span className="font-semibold text-gray-700 dark:text-gray-300">Subject:</span> {result.subject}</p>
+              )}
+              <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{result.body}</p>
+              <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                <span className="text-[11px] text-gray-400">
+                  {result.provider === 'claude' ? 'Generated by Claude' : 'Template'}
+                  {result.basedOnSignals?.length > 0 && ` · ${result.basedOnSignals.length} signal(s)`}
+                </span>
+                <button onClick={copyToClipboard} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

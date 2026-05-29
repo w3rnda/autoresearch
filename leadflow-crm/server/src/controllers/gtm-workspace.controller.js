@@ -2,9 +2,10 @@
 
 const prisma = require('../prisma');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response.utils');
-const { sourcingQueue, scoringQueue } = require('../queues');
+const { sourcingQueue, scoringQueue, signalQueue } = require('../queues');
 const { deduplicateAndInsert } = require('../services/gtm/dedup.service');
 const { findEmailsForDomain } = require('../services/providers/hunter.provider');
+const { generateOutreach } = require('../services/gtm/outreach.service');
 
 // ─── List GTM Workspaces ─────────────────────────────────────────────────────
 
@@ -708,6 +709,166 @@ const findEntityEmails = async (req, res, next) => {
   }
 };
 
+// ─── Signal Engine ───────────────────────────────────────────────────────────
+
+/**
+ * POST /gtm/workspaces/:id/scan
+ * Trigger a full periodic scan: re-source → snapshot → detect signals.
+ * This is the "continuous pipeline" engine.
+ */
+const scanWorkspace = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { organizationId } = req.user;
+
+    const workspace = await prisma.gtmWorkspace.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!workspace) {
+      return res.status(404).json(errorResponse('GTM workspace not found'));
+    }
+
+    await signalQueue.add(
+      'scan-workspace',
+      { workspaceId: id },
+      { jobId: `manual-scan-${id}-${Date.now()}` }
+    );
+
+    return res.status(202).json(successResponse(
+      { workspaceId: id },
+      'Periodic scan queued (re-source + snapshot + signal detection)'
+    ));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /gtm/workspaces/:id/detect-signals
+ * Snapshot all entities then run signal detection (no re-sourcing).
+ */
+const detectWorkspaceSignals = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { organizationId } = req.user;
+
+    const workspace = await prisma.gtmWorkspace.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!workspace) {
+      return res.status(404).json(errorResponse('GTM workspace not found'));
+    }
+
+    // Snapshot first, then detect — chained so a baseline always exists.
+    await signalQueue.add('snapshot-workspace', { workspaceId: id }, { jobId: `snap-${id}-${Date.now()}` });
+    await signalQueue.add('detect-workspace', { workspaceId: id }, { jobId: `detect-${id}-${Date.now()}`, delay: 2000 });
+
+    return res.status(202).json(successResponse(
+      { workspaceId: id },
+      'Snapshot + signal detection queued'
+    ));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /gtm/workspaces/:id/signals
+ * List recently detected intent signals for a workspace (hot leads first).
+ */
+const listSignals = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { organizationId } = req.user;
+    const { type, page = 1, limit = 50 } = req.query;
+
+    const workspace = await prisma.gtmWorkspace.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!workspace) {
+      return res.status(404).json(errorResponse('GTM workspace not found'));
+    }
+
+    const where = { workspaceId: id, ...(type && { type }) };
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const take = parseInt(limit, 10);
+
+    const [signals, total] = await Promise.all([
+      prisma.signal.findMany({
+        where,
+        skip,
+        take,
+        orderBy: [{ strength: 'desc' }, { detectedAt: 'desc' }],
+        include: {
+          entity: {
+            select: { id: true, name: true, domain: true, email: true, phone: true, gtmScore: true, status: true },
+          },
+        },
+      }),
+      prisma.signal.count({ where }),
+    ]);
+
+    return res.status(200).json(paginatedResponse(signals, {
+      total,
+      page: parseInt(page, 10),
+      limit: take,
+      totalPages: Math.ceil(total / take),
+    }));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /gtm/workspaces/:id/entities/:entityId/outreach
+ * Generate signal-driven outreach copy for an entity.
+ * Body: { channel?: 'email'|'sms', senderOffer?: string }
+ */
+const generateEntityOutreach = async (req, res, next) => {
+  try {
+    const { id, entityId } = req.params;
+    const { organizationId } = req.user;
+    const { channel = 'email', senderOffer } = req.body;
+
+    const workspace = await prisma.gtmWorkspace.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!workspace) {
+      return res.status(404).json(errorResponse('GTM workspace not found'));
+    }
+
+    const entity = await prisma.gtmEntity.findFirst({
+      where: { id: entityId, workspaceId: id },
+    });
+    if (!entity) {
+      return res.status(404).json(errorResponse('Entity not found'));
+    }
+
+    // Pull recent, non-expired signals for this entity.
+    const signals = await prisma.signal.findMany({
+      where: {
+        entityId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      orderBy: { strength: 'desc' },
+      take: 5,
+    });
+
+    const outreach = await generateOutreach(entity, signals, { channel, senderOffer });
+
+    return res.json(successResponse({
+      ...outreach,
+      signalCount: signals.length,
+    }, signals.length > 0 ? 'Signal-driven outreach generated' : 'Outreach generated (no active signals)'));
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   listWorkspaces,
   getWorkspace,
@@ -724,4 +885,8 @@ module.exports = {
   scoreWorkspaceEntities,
   scoreEntity,
   findEntityEmails,
+  scanWorkspace,
+  detectWorkspaceSignals,
+  listSignals,
+  generateEntityOutreach,
 };

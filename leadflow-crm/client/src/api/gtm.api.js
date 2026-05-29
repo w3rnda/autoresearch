@@ -27,4 +27,13 @@ export const gtmApi = {
   // Email finder (Hunter.io with pattern fallback)
   findEntityEmails: (workspaceId, entityId) =>
     apiClient.post(`/gtm/workspaces/${workspaceId}/entities/${entityId}/find-emails`),
+
+  // Signal Engine (continuous intent detection)
+  scanWorkspace: (id) => apiClient.post(`/gtm/workspaces/${id}/scan`),
+  detectSignals: (id) => apiClient.post(`/gtm/workspaces/${id}/detect-signals`),
+  listSignals: (id, params) => apiClient.get(`/gtm/workspaces/${id}/signals`, { params }),
+
+  // Signal-driven outreach generation
+  generateOutreach: (workspaceId, entityId, data = {}) =>
+    apiClient.post(`/gtm/workspaces/${workspaceId}/entities/${entityId}/outreach`, data),
 }

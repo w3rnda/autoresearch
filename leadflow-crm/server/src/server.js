@@ -7,6 +7,8 @@ const { initializeWorkers } = require('./workers/email.worker');
 const { startSourcingWorker } = require('./workers/sourcing.worker');
 const { startEnrichmentWorker } = require('./workers/enrichment.worker');
 const { startScoringWorker } = require('./workers/scoring.worker');
+const { startSignalWorker } = require('./workers/signal.worker');
+const { startScheduler } = require('./workers/scheduler');
 
 const PORT = process.env.PORT || 3001;
 
@@ -20,12 +22,15 @@ async function start() {
       startSourcingWorker();
       startEnrichmentWorker();
       startScoringWorker();
-      console.log('[GTM] Workers initialized (sourcing + enrichment + scoring)');
+      startSignalWorker();
+      console.log('[GTM] Workers initialized (sourcing + enrichment + scoring + signal)');
       if (process.env.ANTHROPIC_API_KEY) {
-        console.log('[GTM] Claude AI scoring enabled');
+        console.log('[GTM] Claude AI scoring + outreach enabled');
       } else {
-        console.log('[GTM] Claude API key not set — using heuristic scoring fallback');
+        console.log('[GTM] Claude API key not set — using heuristic scoring + template outreach fallback');
       }
+      // Periodic scan scheduler — the "continuous pipeline" engine
+      startScheduler();
     } else {
       console.log('[GTM] Workers skipped (no REDIS_HOST configured)');
     }
