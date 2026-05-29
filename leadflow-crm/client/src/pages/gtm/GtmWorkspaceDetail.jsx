@@ -66,7 +66,8 @@ export default function GtmWorkspaceDetail() {
   const { data: runsData } = useQuery({
     queryKey: ['gtm-runs', workspaceId],
     queryFn: () => gtmApi.listSourcingRuns(workspaceId).then(r => r.data),
-    refetchInterval: 10000,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   })
 
   const activateMutation = useMutation({
@@ -129,7 +130,8 @@ export default function GtmWorkspaceDetail() {
   const { data: signalsData } = useQuery({
     queryKey: ['gtm-signals', workspaceId],
     queryFn: () => gtmApi.listSignals(workspaceId, { limit: 50 }).then(r => r.data),
-    refetchInterval: 15000,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   })
 
   const detectSignalsMutation = useMutation({

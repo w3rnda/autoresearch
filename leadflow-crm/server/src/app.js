@@ -26,6 +26,14 @@ const gtmRoutes = require('./routes/gtm.routes');
 
 const app = express();
 
+// Trust the first proxy in production (Railway/Render/nginx) so req.ip
+// reflects the real client IP and per-IP rate limiting works correctly.
+// Without this, every request appears to come from the proxy, sharing one
+// rate-limit bucket across all users.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Security headers
 app.use(helmet());
 
@@ -60,15 +68,20 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting on all /api/ routes
+// Rate limiting on all /api/ routes.
+// An authenticated SPA polls several endpoints (notifications, GTM runs,
+// GTM signals) on intervals, so the budget must comfortably exceed normal
+// polling traffic. 100/15min was far too low and caused 429 floods.
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  windowMs: 60 * 1000, // 1 minute window
+  max: parseInt(process.env.RATE_LIMIT_MAX || '300', 10), // 300 req/min per IP
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting entirely outside production (local dev / tests).
+  skip: () => process.env.NODE_ENV !== 'production',
   message: {
     success: false,
-    error: 'Too many requests from this IP, please try again after 15 minutes.',
+    error: 'Too many requests from this IP, please slow down and try again shortly.',
   },
 });
 app.use('/api/', apiLimiter);
